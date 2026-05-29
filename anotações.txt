@@ -1,5 +1,6 @@
 sei comentários assim pode ser feito direto no Git mas tenho preguiça e achei complexo kk
 
+Chat utilizado para programação no GPT: 'https://chatgpt.com/share/6a19d75c-65e4-83e9-92ac-dc731f5dbeb7'
 a pasta PAMTCC deve permanenecer na raiz do /C
 a pasta API deve estar presente na raiz do htdocs na pasta xampp
 anotar qualquer mudança com descrições precisas de erros, atualizações e sua respectiva data, exemplo:

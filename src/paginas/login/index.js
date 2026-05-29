@@ -1,5 +1,5 @@
+import 'react-native-gesture-handler';
 import React from 'react';
-import { styles } from './styles';
 
 import {
   View,
@@ -7,21 +7,27 @@ import {
   TextInput,
   TouchableOpacity,
   Image,
-  StyleSheet,
 } from 'react-native';
+
+import { useNavigation } from '@react-navigation/native';
 
 import MaskedView from '@react-native-masked-view/masked-view';
 
 import { LinearGradient } from 'expo-linear-gradient';
 
+import { styles } from './styles';
+
+import Logo from '../../../assets/icons/logo.png';
+
 export default function Login() {
+
+  const navigation = useNavigation();
+
   return (
     <View style={styles.container}>
 
       <Image
-        source={{
-          uri: 'https://cdn-icons-png.flaticon.com/512/684/684908.png',
-        }}
+        source={Logo}
         style={styles.logo}
       />
 
@@ -92,9 +98,15 @@ export default function Login() {
           </LinearGradient>
         </TouchableOpacity>
 
-        <Text style={styles.register}>
-          Ainda não tem conta? Crie a sua agora.
-        </Text>
+        <TouchableOpacity
+          onPress={() =>
+            navigation.navigate('CriarConta')
+          }
+        >
+          <Text style={styles.register}>
+            Ainda não tem conta? Crie a sua agora.
+          </Text>
+        </TouchableOpacity>
 
       </View>
 
