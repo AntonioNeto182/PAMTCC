@@ -5,30 +5,30 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
 import Login from './paginas/login';
-
 import CriarConta from './paginas/criar_conta';
-
-import EsqueceuSenha from './paginas/esqueceu_senha'
+import EsqueceuSenha from './paginas/esqueceu_senha';
 
 const Stack = createNativeStackNavigator();
 
 export default function Routes() {
+
   return (
     <NavigationContainer>
+
       <Stack.Navigator
-        screenOptions={{
-          headerShown: false,
-        }}
+        initialRouteName="Login"
       >
 
         <Stack.Screen
           name="Login"
           component={Login}
+          options={{ headerShown: false }}
         />
 
         <Stack.Screen
           name="CriarConta"
           component={CriarConta}
+          options={{ headerShown: false }}
         />
 
         <Stack.Screen
@@ -38,6 +38,7 @@ export default function Routes() {
         />
 
       </Stack.Navigator>
+
     </NavigationContainer>
   );
 }

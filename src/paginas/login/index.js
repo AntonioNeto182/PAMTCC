@@ -1,5 +1,6 @@
 import 'react-native-gesture-handler';
 import React from 'react';
+import api from '../../services/api';
 
 import {
   View,
@@ -79,7 +80,11 @@ export default function Login() {
           style={styles.input}
         />
 
-        <TouchableOpacity>
+        <TouchableOpacity
+          onPress={() =>
+            navigation.navigate('EsqueceuSenha')
+          }
+        >
           <Text style={styles.forgot}>
             Esqueci minha senha
           </Text>
