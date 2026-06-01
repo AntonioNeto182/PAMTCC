@@ -1,1 +1,78 @@
 banco de dados do projeto deve ser atualizado neste txt
+
+CREATE DATABASE SIMAV
+
+USE DATABASE SIMAV
+
+-- =========================
+-- TABELA: USUARIOS
+-- =========================
+CREATE TABLE usuarios (
+    id_usuario INT NOT NULL AUTO_INCREMENT,
+    nome VARCHAR(100) NOT NULL,
+    email VARCHAR(150) NOT NULL UNIQUE,
+    senha VARCHAR(255) NOT NULL,
+    foto_perfil VARCHAR(255),
+    data_cadastro DATETIME NOT NULL,
+    PRIMARY KEY (id_usuario)
+) ENGINE=InnoDB;
+
+-- =========================
+-- TABELA: LOCAIS
+-- =========================
+CREATE TABLE locais (
+    id_local INT NOT NULL AUTO_INCREMENT,
+    endereco VARCHAR(255) NOT NULL,
+    latitude DECIMAL(10,8) NOT NULL,
+    longitude DECIMAL(11,8) NOT NULL,
+    PRIMARY KEY (id_local)
+) ENGINE=InnoDB;
+
+-- =========================
+-- TABELA: TIPOS DE DENUNCIA
+-- =========================
+CREATE TABLE tipos_denuncia (
+    id_tipo INT NOT NULL AUTO_INCREMENT,
+    nome VARCHAR(100) NOT NULL,
+    descricao VARCHAR(255),
+    PRIMARY KEY (id_tipo)
+) ENGINE=InnoDB;
+
+-- =========================
+-- TABELA: DENUNCIAS
+-- =========================
+CREATE TABLE denuncias (
+    id_denuncia INT NOT NULL AUTO_INCREMENT,
+    descricao VARCHAR(255) NOT NULL,
+    data_denuncia DATETIME NOT NULL,
+    status VARCHAR(50) NOT NULL,
+    id_usuario INT,
+    id_local INT NOT NULL,
+    id_tipo INT NOT NULL,
+    PRIMARY KEY (id_denuncia),
+
+    FOREIGN KEY (id_usuario) REFERENCES usuarios(id_usuario),
+    FOREIGN KEY (id_local) REFERENCES locais(id_local),
+    FOREIGN KEY (id_tipo) REFERENCES tipos_denuncia(id_tipo)
+) ENGINE=InnoDB;
+
+-- =========================
+-- TABELA: IMAGENS DAS DENUNCIAS
+-- =========================image_upload
+CREATE TABLE imagens (
+    id_imagem INT NOT NULL AUTO_INCREMENT,
+    caminho VARCHAR(255) NOT NULL,
+    id_denuncia INT NOT NULL,
+    PRIMARY KEY (id_imagem),
+
+    FOREIGN KEY (id_denuncia) REFERENCES denuncias(id_denuncia)
+) ENGINE=InnoDB;
+
+-- =========================
+-- DADOS INICIAIS (OPCIONAL)
+-- =========================
+INSERT INTO tipos_denuncia (nome, descricao) VALUES
+('Água parada', 'Possível foco com água acumulada'),
+('Lixo acumulado', 'Acúmulo de lixo que pode gerar foco'),
+('Caixa d''água aberta', 'Reservatório sem tampa'),
+('Pneu com água', 'Pneus acumulando água');

@@ -8,3 +8,6 @@ anotar qualquer mudança com descrições precisas de erros, atualizações e su
 25/05:
 Página X desenvolvida de forma incompleta, necessita Y ainda
 ocorre o erro A em situação B
+
+ ********
+ 01/06: Página 'esqueceu_senha' não há botão para voltar
