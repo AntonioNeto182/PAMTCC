@@ -1,5 +1,5 @@
 import 'react-native-gesture-handler';
-import React from 'react';
+import React, { useState } from 'react';
 import api from '../../services/api';
 
 import {
@@ -8,6 +8,7 @@ import {
   TextInput,
   TouchableOpacity,
   Image,
+  Alert,
 } from 'react-native';
 
 import { useNavigation } from '@react-navigation/native';
@@ -23,6 +24,59 @@ import Logo from '../../../assets/icons/logo.png';
 export default function Login() {
 
   const navigation = useNavigation();
+
+  const [email, setEmail] = useState('');
+  const [senha, setSenha] = useState('');
+
+  async function entrar() {
+
+    if (!email || !senha) {
+
+      Alert.alert(
+        'Atenção',
+        'Preencha e-mail e senha.'
+      );
+
+      return;
+    }
+
+    try {
+
+      const response = await api.post(
+        '/usuarios/login.php',
+        {
+          email,
+          senha,
+        }
+      );
+
+      if (response.data.success) {
+
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'Inicio' }],
+        });
+
+      } else {
+
+        Alert.alert(
+          'Erro',
+          response.data.message
+        );
+
+      }
+
+    } catch (error) {
+
+      console.log(error);
+
+      Alert.alert(
+        'Erro',
+        'Não foi possível conectar à API.'
+      );
+
+    }
+  }
 
   return (
     <View style={styles.container}>
@@ -69,6 +123,10 @@ export default function Login() {
 
         <TextInput
           style={styles.input}
+          keyboardType="email-address"
+          autoCapitalize="none"
+          value={email}
+          onChangeText={setEmail}
         />
 
         <Text style={styles.label}>
@@ -78,6 +136,8 @@ export default function Login() {
         <TextInput
           secureTextEntry={true}
           style={styles.input}
+          value={senha}
+          onChangeText={setSenha}
         />
 
         <TouchableOpacity
@@ -90,7 +150,10 @@ export default function Login() {
           </Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.button}>
+        <TouchableOpacity
+          style={styles.button}
+          onPress={entrar}
+        >
           <LinearGradient
             colors={['#ff7b39', '#ff4b4b']}
             start={{ x: 0, y: 0 }}

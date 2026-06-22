@@ -6,6 +6,8 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
 import Login from './paginas/login';
 
+import Paginainicial from './paginas/pagina_inicial'
+
 import CriarConta from './paginas/criar_conta';
 
 import EsqueceuSenha from './paginas/esqueceu_senha'

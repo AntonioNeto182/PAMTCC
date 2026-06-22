@@ -11,3 +11,5 @@ ocorre o erro A em situação B
 
  ********
  01/06: Página 'esqueceu_senha' não há botão para voltar
+
+ 22/06: Login não leva a lugar nenhum

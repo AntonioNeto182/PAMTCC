@@ -15,11 +15,17 @@ import MaskedView from '@react-native-masked-view/masked-view';
 
 import { LinearGradient } from 'expo-linear-gradient';
 
+import { Ionicons } from '@expo/vector-icons';
+
+import { useNavigation } from '@react-navigation/native';
+
 import { styles } from './styles';
 
 import Logo from '../../../assets/icons/logo.png';
 
 export default function EsqueceuSenha() {
+
+  const navigation = useNavigation();
 
   const [email, setEmail] = useState('');
 
@@ -46,6 +52,13 @@ export default function EsqueceuSenha() {
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
+
+      <TouchableOpacity
+        style={styles.backButton}
+        onPress={() => navigation.navigate('Login')}
+      >
+        <Ionicons name="arrow-back" size={24} color="#000" />
+      </TouchableOpacity>
 
       <Image
         source={Logo}

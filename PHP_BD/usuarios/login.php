@@ -1,5 +1,5 @@
 <?php
-
+include('../config/cors.php');
 include('../config/database.php');
 
 $dados = json_decode(file_get_contents("php://input"), true);
