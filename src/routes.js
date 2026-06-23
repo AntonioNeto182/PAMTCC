@@ -11,6 +11,7 @@ import Paginainicial from './paginas/pagina_inicial'
 import CriarConta from './paginas/criar_conta';
 
 import EsqueceuSenha from './paginas/esqueceu_senha'
+import Inicio from './paginas/pagina_inicial';
 
 const Stack = createNativeStackNavigator();
 
@@ -36,6 +37,12 @@ export default function Routes() {
         <Stack.Screen
           name="EsqueceuSenha"
           component={EsqueceuSenha}
+          options={{ headerShown: false }}
+        />
+
+        <Stack.Screen
+          name='Inicio'
+          component={Inicio}
           options={{ headerShown: false }}
         />
 
