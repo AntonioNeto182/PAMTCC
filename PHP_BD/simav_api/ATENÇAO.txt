@@ -1,0 +1,30 @@
+NÃO EDITAR E NÃO UTILIZAR ESSE PHP COMO SE FOSSE O BD OFICIAL DO PROJETO
+AO EDITAR PARA O PROJETO EDITE NO HTDOCS E PASSE AS NOVAS VERSÕES PARA ESSA PASTA ANTES DO COMMIT
+ESTRUTURA DE PASTAS NO HTDOCS:
+
+htdocs/
+ └── simav_api/
+      │
+      ├── config/
+      │    └── database.php
+      │
+      ├── usuarios/
+      │    ├── login.php
+      │    ├── cadastrar.php
+      │    └── perfil.php
+      │
+      ├── denuncias/
+      │    ├── criar.php
+      │    ├── listar.php
+      │    ├── detalhes.php
+      │    └── upload_imagem.php
+      │
+      ├── mapa/
+      │    └── listar_mapa.php
+      │
+      ├── tipos/
+      │    └── listar_tipos.php
+      │
+      ├── uploads/
+      │
+      └── .htaccess

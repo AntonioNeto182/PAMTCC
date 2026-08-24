@@ -1,6 +1,7 @@
-import 'react-native-gesture-handler';
-import React, { useState } from 'react';
-import api from '../../services/api';
+import "react-native-gesture-handler";
+import React, { useState } from "react";
+import api from "../../services/api";
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import {
   View,
@@ -9,96 +10,79 @@ import {
   TouchableOpacity,
   Image,
   Alert,
-} from 'react-native';
+} from "react-native";
 
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation } from "@react-navigation/native";
 
-import MaskedView from '@react-native-masked-view/masked-view';
+import MaskedView from "@react-native-masked-view/masked-view";
 
-import { LinearGradient } from 'expo-linear-gradient';
+import { LinearGradient } from "expo-linear-gradient";
 
-import { styles } from './styles';
+import { styles } from "./styles";
 
-import Logo from '../../../assets/icons/logo.png';
+import Logo from "../../../assets/icons/logo.png";
 
 export default function Login() {
-
   const navigation = useNavigation();
 
-  const [email, setEmail] = useState('');
-  const [senha, setSenha] = useState('');
+  const [email, setEmail] = useState("");
+  const [senha, setSenha] = useState("");
 
   async function entrar() {
-
     if (!email || !senha) {
-
-      Alert.alert(
-        'Atenção',
-        'Preencha e-mail e senha.'
-      );
+      Alert.alert("Atenção", "Preencha e-mail e senha.");
 
       return;
     }
 
     try {
-
-      const response = await api.post(
-        '/usuarios/login.php',
-        {
-          email,
-          senha,
-        }
-      );
+      const response = await api.post("/usuarios/login.php", {
+        email,
+        senha,
+      });
 
       if (response.data.success) {
+        await AsyncStorage.setItem(
+          "usuario",
+          JSON.stringify(response.data.usuario),
+        );
 
         navigation.reset({
           index: 0,
-          routes: [{ name: 'Inicio' }],
+          routes: [{ name: "Inicio" }],
         });
-
       } else {
-
-        Alert.alert(
-          'Erro',
-          response.data.message
-        );
-
+        Alert.alert("Erro", response.data.message);
       }
-
     } catch (error) {
+      console.log("STATUS:", error.response?.status);
+      console.log("DATA:", JSON.stringify(error.response?.data));
+      console.log("RAW:", error.response?.data);
 
-      console.log(error);
-
-      Alert.alert(
-        'Erro',
-        'Não foi possível conectar à API.'
-      );
-
+      if (error.response) {
+        Alert.alert(
+          "Erro",
+          typeof error.response.data === "string"
+            ? error.response.data
+            : error.response.data?.message || "Erro ao fazer login.",
+        );
+      } else if (error.request) {
+        Alert.alert("Erro", "Não foi possível conectar à API.");
+      } else {
+        Alert.alert("Erro", "Erro inesperado.");
+      }
     }
   }
 
   return (
     <View style={styles.container}>
+      <Image source={Logo} style={styles.logo} />
 
-      <Image
-        source={Logo}
-        style={styles.logo}
-      />
+      <Text style={styles.title}>Bem-vindo ao</Text>
 
-      <Text style={styles.title}>
-        Bem-vindo ao
-      </Text>
-
-      <MaskedView
-        maskElement={
-          <Text style={styles.titleGradient}>
-            SIMAV
-          </Text>
-        }
-      >
+      <MaskedView maskElement={<Text style={styles.titleGradient}>SIMAV</Text>}>
         <LinearGradient
-          colors={['#ff1e00', '#ff9f1a']}
+          colors={["#ff1e00", "#ff9f1a"]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 0 }}
         >
@@ -116,10 +100,7 @@ export default function Login() {
       </MaskedView>
 
       <View style={styles.inputArea}>
-
-        <Text style={styles.label}>
-          E-mail
-        </Text>
+        <Text style={styles.label}>E-mail</Text>
 
         <TextInput
           style={styles.input}
@@ -129,9 +110,7 @@ export default function Login() {
           onChangeText={setEmail}
         />
 
-        <Text style={styles.label}>
-          Senha
-        </Text>
+        <Text style={styles.label}>Senha</Text>
 
         <TextInput
           secureTextEntry={true}
@@ -140,44 +119,27 @@ export default function Login() {
           onChangeText={setSenha}
         />
 
-        <TouchableOpacity
-          onPress={() =>
-            navigation.navigate('EsqueceuSenha')
-          }
-        >
-          <Text style={styles.forgot}>
-            Esqueci minha senha
-          </Text>
+        <TouchableOpacity onPress={() => navigation.navigate("EsqueceuSenha")}>
+          <Text style={styles.forgot}>Esqueci minha senha</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity
-          style={styles.button}
-          onPress={entrar}
-        >
+        <TouchableOpacity style={styles.button} onPress={entrar}>
           <LinearGradient
-            colors={['#ff7b39', '#ff4b4b']}
+            colors={["#ff7b39", "#ff4b4b"]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 0 }}
             style={styles.gradientButton}
           >
-            <Text style={styles.buttonText}>
-              Entrar
-            </Text>
+            <Text style={styles.buttonText}>Entrar</Text>
           </LinearGradient>
         </TouchableOpacity>
 
-        <TouchableOpacity
-          onPress={() =>
-            navigation.navigate('CriarConta')
-          }
-        >
+        <TouchableOpacity onPress={() => navigation.navigate("CriarConta")}>
           <Text style={styles.register}>
             Ainda não tem conta? Crie a sua agora.
           </Text>
         </TouchableOpacity>
-
       </View>
-
     </View>
   );
 }
