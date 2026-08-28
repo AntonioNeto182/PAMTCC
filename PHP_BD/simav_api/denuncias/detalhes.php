@@ -1,7 +1,6 @@
 <?php
-
+include('../config/cors.php');
 include('../config/database.php');
-header('Content-Type: application/json');
 
 if (!isset($_GET['id']) || !ctype_digit($_GET['id'])) {
     http_response_code(400);
@@ -12,9 +11,17 @@ if (!isset($_GET['id']) || !ctype_digit($_GET['id'])) {
 $id = (int) $_GET['id'];
 
 $sql = "
-SELECT d.*, u.nome, l.endereco, l.latitude, l.longitude, t.nome AS tipo
+SELECT
+d.id_denuncia,
+d.descricao,
+d.status,
+d.data_denuncia,
+t.nome AS tipo,
+l.endereco,
+l.latitude,
+l.longitude,
+(SELECT caminho FROM imagens WHERE id_denuncia = d.id_denuncia ORDER BY id_imagem ASC LIMIT 1) AS imagem
 FROM denuncias d
-INNER JOIN usuarios u ON d.id_usuario = u.id_usuario
 INNER JOIN locais l ON d.id_local = l.id_local
 INNER JOIN tipos_denuncia t ON d.id_tipo = t.id_tipo
 WHERE d.id_denuncia = ?

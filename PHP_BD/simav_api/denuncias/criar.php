@@ -1,24 +1,26 @@
 <?php
 
+include('../config/cors.php');
 include('../config/database.php');
-header('Content-Type: application/json');
 
 $dados = json_decode(file_get_contents("php://input"), true);
 
-if (!$dados || empty($dados['descricao']) || empty($dados['endereco']) ||
+if (!$dados || empty($dados['endereco']) ||
     !isset($dados['latitude'], $dados['longitude'], $dados['id_tipo'])) {
     http_response_code(400);
     echo json_encode(['success' => false, 'message' => 'Dados incompletos']);
     exit;
 }
 
-$descricao = $dados['descricao'];
+$descricao = $dados['descricao'] ?? '';
 $status = "Pendente";
-$id_usuario = $dados['id_usuario'] ?? null;
+$id_usuario = isset($dados['id_usuario']) && $dados['id_usuario'] !== null
+    ? (int) $dados['id_usuario']
+    : null;
 $endereco = $dados['endereco'];
-$latitude = $dados['latitude'];
-$longitude = $dados['longitude'];
-$id_tipo = $dados['id_tipo'];
+$latitude = (float) $dados['latitude'];
+$longitude = (float) $dados['longitude'];
+$id_tipo = (int) $dados['id_tipo'];
 $data = date('Y-m-d H:i:s');
 
 $conn->begin_transaction();

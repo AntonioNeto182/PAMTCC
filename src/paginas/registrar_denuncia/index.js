@@ -57,7 +57,7 @@ export default function RegistrarDenuncia() {
     }
 
     const resultado = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ['images'],
       quality: 0.7,
     });
 
@@ -66,9 +66,18 @@ export default function RegistrarDenuncia() {
     }
   }
 
+  function removerImagem() {
+    setImagem(null);
+  }
+
   async function registrarDenuncia() {
-    if (!endereco || !bairro || !descricao || !idTipo) {
-      Alert.alert('Atenção', 'Preencha todos os campos antes de registrar.');
+    if (tipos.length === 0) {
+      Alert.alert('Erro', 'Não foi possível carregar os tipos de problema. Verifique sua conexão com a API.');
+      return;
+    }
+
+    if (!endereco || !bairro || !idTipo) {
+      Alert.alert('Atenção', 'Preencha ao menos o endereço, bairro e tipo do problema.');
       return;
     }
 
@@ -84,7 +93,7 @@ export default function RegistrarDenuncia() {
       const usuario = usuarioSalvo ? JSON.parse(usuarioSalvo) : null;
 
       const respostaCriar = await api.post('/denuncias/criar.php', {
-        descricao,
+        descricao: descricao || '',
         endereco: `${endereco} - ${bairro}`,
         latitude,
         longitude,
@@ -164,22 +173,32 @@ export default function RegistrarDenuncia() {
           ))}
         </View>
 
-        <Text style={styles.label}>Descrição do problema</Text>
+        <Text style={styles.label}>Descrição do problema (opcional)</Text>
         <TextInput
           style={styles.textarea}
           value={descricao}
           onChangeText={setDescricao}
           multiline
           numberOfLines={5}
+          placeholder="Descreva o problema, se quiser adicionar mais detalhes..."
         />
 
-        <Text style={styles.label}>Anexar fotos</Text>
+        <Text style={styles.label}>Anexar fotos (opcional)</Text>
         <TouchableOpacity style={styles.uploadButton} onPress={escolherImagem}>
           <Ionicons name="camera" size={20} color="#333" />
           <Text style={styles.uploadButtonText}>
-            {imagem ? 'Imagem selecionada' : 'Adicionar imagem'}
+            {imagem ? 'Trocar imagem' : 'Adicionar imagem'}
           </Text>
         </TouchableOpacity>
+
+        {imagem && (
+          <View style={styles.previewArea}>
+            <Image source={{ uri: imagem.uri }} style={styles.previewImage} />
+            <TouchableOpacity style={styles.previewRemove} onPress={removerImagem}>
+              <Ionicons name="close-circle" size={26} color="#ff4b4b" />
+            </TouchableOpacity>
+          </View>
+        )}
 
         <TouchableOpacity style={styles.button} onPress={registrarDenuncia} disabled={enviando}>
           <LinearGradient
