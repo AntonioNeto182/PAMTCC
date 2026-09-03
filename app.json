@@ -13,7 +13,10 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "O SIMAV usa sua localização para centralizar o mapa e ajudar a registrar denúncias com mais precisão."
+      }
     },
     "android": {
       "usesCleartextTraffic": true,
@@ -22,14 +25,21 @@
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.anonymous.appPETIMAGEMPhp_Antonio"
+      "package": "com.anonymous.appPETIMAGEMPhp_Antonio",
+      "permissions": ["ACCESS_FINE_LOCATION", "ACCESS_COARSE_LOCATION"]
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
       "expo-font",
-      "expo-status-bar"
+      "expo-status-bar",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermissionCode": "O SIMAV usa sua localização para centralizar o mapa."
+        }
+      ]
     ]
   }
 }

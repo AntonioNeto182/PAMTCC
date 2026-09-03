@@ -9,7 +9,7 @@ import CriarConta from "../paginas/criar_conta";
 import Inicio from "../paginas/pagina_inicial";
 import EsqueceuSenha from "../paginas/esqueceu_senha";
 // import Perfil from "../paginas/perfil"; // tela ainda não criada
-// import Mapa from "../paginas/mapa_calor"; // tela ainda não implementada
+// import Mapa from "../paginas/mapa"; // tela ainda não implementada
 import SelecionarLocal from "../paginas/selecionar_local";
 import RegistrarDenuncia from "../paginas/registrar_denuncia";
 

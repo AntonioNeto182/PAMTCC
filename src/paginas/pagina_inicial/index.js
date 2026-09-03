@@ -28,6 +28,7 @@ export default function Inicio() {
 
   const [busca, setBusca] = useState("");
   const [filtroAtivo, setFiltroAtivo] = useState("Casos");
+  const [mostrarDenuncias, setMostrarDenuncias] = useState(false);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -53,7 +54,7 @@ export default function Inicio() {
       <View style={styles.ctaArea}>
         <TouchableOpacity
           style={styles.ctaButton}
-          onPress={() => navigation.navigate("Mapa")}
+          onPress={() => setMostrarDenuncias((atual) => !atual)}
         >
           <LinearGradient
             colors={["#ff7b39", "#ff4b4b"]}
@@ -61,7 +62,9 @@ export default function Inicio() {
             end={{ x: 1, y: 0 }}
             style={styles.ctaGradient}
           >
-            <Text style={styles.ctaText}>Ver denúncias no local</Text>
+            <Text style={styles.ctaText}>
+              {mostrarDenuncias ? "Ocultar denúncias do mapa" : "Ver denúncias do mapa"}
+            </Text>
           </LinearGradient>
         </TouchableOpacity>
 
@@ -112,7 +115,7 @@ export default function Inicio() {
       </View>
 
       <View style={styles.mapa}>
-        <Mapa />
+        <Mapa mostrarDenuncias={mostrarDenuncias} />
       </View>
     </SafeAreaView>
   );

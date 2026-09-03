@@ -1,16 +1,19 @@
-import React from 'react';
-import { View, StyleSheet } from 'react-native';
+import React, { useRef, useState } from 'react';
+import { View, StyleSheet, TouchableOpacity } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { useNavigation } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
+import * as Location from 'expo-location';
 
 const mapaHtml = `
 <!DOCTYPE html>
 <html>
 <head>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <style>
-    html, body, #map { height: 100%; margin: 0; padding: 0; touch-action: none; }
+    html, body { height: 100%; margin: 0; padding: 0; }
+    #map { height: 100%; width: 100%; }
     .popup-confirm { text-align: center; }
     .popup-confirm button {
       margin: 4px; padding: 6px 14px; border: none; border-radius: 6px;
@@ -18,19 +21,60 @@ const mapaHtml = `
     }
     .btn-confirmar { background: #ff4b4b; }
     .btn-cancelar { background: #999; }
+
+    .pin-usuario {
+      width: 20px; height: 20px;
+      background: #1a73e8;
+      border: 3px solid #fff;
+      border-radius: 50%;
+      box-shadow: 0 0 0 4px rgba(26,115,232,0.3);
+    }
   </style>
 </head>
 <body>
   <div id="map"></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
-    const map = L.map('map', { tap: true }).setView([-23.5478, -46.6361], 14);
+    const map = L.map('map', { tap: false }).setView([-23.5478, -46.6361], 14);
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; OpenStreetMap contributors'
     }).addTo(map);
 
     let marcadorAtual = null;
+    let marcadorUsuario = null;
+    let posicaoUsuario = null;
+
+    function iconeUsuario() {
+      return L.divIcon({
+        className: '',
+        html: '<div class="pin-usuario"></div>',
+        iconSize: [20, 20],
+        iconAnchor: [10, 10],
+      });
+    }
+
+    function definirLocalizacaoUsuario(lat, lng, centralizar) {
+      posicaoUsuario = [lat, lng];
+
+      if (marcadorUsuario) {
+        marcadorUsuario.setLatLng(posicaoUsuario);
+      } else {
+        marcadorUsuario = L.marker(posicaoUsuario, {
+          icon: iconeUsuario(),
+          zIndexOffset: 1000,
+        }).addTo(map);
+      }
+
+      if (centralizar) {
+        map.setView(posicaoUsuario, 16);
+      }
+    }
+
+    function recentralizarNoUsuario() {
+      if (!posicaoUsuario) return;
+      map.flyTo(posicaoUsuario, 16, { duration: 1.2 });
+    }
 
     function criarPopup(lat, lng) {
       const div = document.createElement('div');
@@ -71,6 +115,39 @@ const mapaHtml = `
 
 export default function SelecionarLocal() {
   const navigation = useNavigation();
+  const webviewRef = useRef(null);
+  const [localizacaoPronta, setLocalizacaoPronta] = useState(false);
+
+  async function pedirLocalizacaoECentralizar() {
+    const { status } = await Location.requestForegroundPermissionsAsync();
+
+    if (status !== 'granted') {
+      console.warn('Permissão de localização negada.');
+      return;
+    }
+
+    try {
+      const posicao = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+
+      webviewRef.current?.injectJavaScript(`
+        definirLocalizacaoUsuario(${posicao.coords.latitude}, ${posicao.coords.longitude}, true);
+        true;
+      `);
+
+      setLocalizacaoPronta(true);
+    } catch (erro) {
+      console.error('Erro ao obter localização:', erro);
+    }
+  }
+
+  function recentralizar() {
+    webviewRef.current?.injectJavaScript(`
+      recentralizarNoUsuario();
+      true;
+    `);
+  }
 
   async function buscarEndereco(lat, lng) {
     try {
@@ -118,17 +195,42 @@ export default function SelecionarLocal() {
   return (
     <View style={styles.container}>
       <WebView
+        ref={webviewRef}
         style={{ flex: 1 }}
         originWhitelist={['*']}
         source={{ html: mapaHtml }}
         javaScriptEnabled
         domStorageEnabled
         onMessage={handleMessage}
+        onLoadEnd={pedirLocalizacaoECentralizar}
       />
+
+      {localizacaoPronta && (
+        <TouchableOpacity style={styles.botaoRecentralizar} onPress={recentralizar}>
+          <Ionicons name="locate" size={22} color="#fff" />
+        </TouchableOpacity>
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+
+  botaoRecentralizar: {
+    position: 'absolute',
+    bottom: 16,
+    right: 16,
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: '#ff4b4b',
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+  },
 });
