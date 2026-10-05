@@ -1,49 +1,97 @@
 <?php
-
 include('../config/cors.php');
 include('../config/database.php');
 
-$dados = json_decode(file_get_contents("php://input"), true);
-
-if (!$dados || empty($dados['endereco']) ||
-    !isset($dados['latitude'], $dados['longitude'], $dados['id_tipo'])) {
-    http_response_code(400);
-    echo json_encode(['success' => false, 'message' => 'Dados incompletos']);
+function responder(int $status, array $corpo): never
+{
+    http_response_code($status);
+    echo json_encode($corpo);
     exit;
 }
 
-$descricao = $dados['descricao'] ?? '';
-$status = "Pendente";
-$id_usuario = isset($dados['id_usuario']) && $dados['id_usuario'] !== null
-    ? (int) $dados['id_usuario']
-    : null;
-$endereco = $dados['endereco'];
-$latitude = (float) $dados['latitude'];
-$longitude = (float) $dados['longitude'];
-$id_tipo = (int) $dados['id_tipo'];
-$data = date('Y-m-d H:i:s');
+/**
+ * Convenção do banco existente (seed): POINT(X Y) = POINT(latitude longitude).
+ * Leitura em listar_mapa.php/detalhes.php: ST_X = latitude, ST_Y = longitude.
+ */
+function pontoWkt(float $latitude, float $longitude): string
+{
+    return sprintf('POINT(%F %F)', $latitude, $longitude);
+}
 
-$conn->begin_transaction();
+$dados = json_decode(file_get_contents('php://input'), true);
+
+if (!is_array($dados)
+    || trim((string) ($dados['endereco'] ?? '')) === ''
+    || trim((string) ($dados['bairro'] ?? '')) === ''
+    || !isset($dados['latitude'], $dados['longitude'], $dados['id_tipo'])
+    || !is_numeric($dados['latitude']) || !is_numeric($dados['longitude'])
+) {
+    responder(400, ['success' => false, 'message' => 'Dados incompletos']);
+}
+
+$descricao   = trim((string) ($dados['descricao'] ?? ''));
+$endereco    = trim((string) $dados['endereco']);
+$numero      = $dados['numero']      ?? null;
+$complemento = $dados['complemento'] ?? null;
+$bairro      = trim((string) $dados['bairro']);
+$cidade      = trim((string) ($dados['cidade'] ?? 'Registro'));
+$estado      = strtoupper(substr(trim((string) ($dados['estado'] ?? 'SP')), 0, 2));
+$cep         = $dados['cep'] ?? null;
+
+$latitude   = (float) $dados['latitude'];
+$longitude  = (float) $dados['longitude'];
+$idTipo     = (int) $dados['id_tipo'];
+$idUsuario  = isset($dados['id_usuario']) ? (int) $dados['id_usuario'] : null;
+$idStatus   = 1; // pendente
+$prioridade = 3;
+
+if ($latitude < -90 || $latitude > 90 || $longitude < -180 || $longitude > 180
+    || mb_strlen($descricao) > 500 || mb_strlen($endereco) > 255 || mb_strlen($bairro) > 100) {
+    responder(400, ['success' => false, 'message' => 'Dados inválidos']);
+}
+
+$pontoWkt = pontoWkt($latitude, $longitude);
 
 try {
-    $stmtLocal = $conn->prepare("INSERT INTO locais (endereco, latitude, longitude) VALUES (?, ?, ?)");
-    $stmtLocal->bind_param("sdd", $endereco, $latitude, $longitude);
-    $stmtLocal->execute();
-    $id_local = $conn->insert_id;
+    $conn->begin_transaction();
 
-    $stmt = $conn->prepare("INSERT INTO denuncias (descricao, data_denuncia, status, id_usuario, id_local, id_tipo) VALUES (?, ?, ?, ?, ?, ?)");
-    $stmt->bind_param("sssiii", $descricao, $data, $status, $id_usuario, $id_local, $id_tipo);
+    $stmtLocal = $conn->prepare(
+        'INSERT INTO locais (endereco, numero, complemento, bairro, cidade, estado, cep, localizacao)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ST_GeomFromText(?))'
+    );
+    $stmtLocal->bind_param(
+        'ssssssss',
+        $endereco, $numero, $complemento, $bairro, $cidade, $estado, $cep, $pontoWkt
+    );
+    $stmtLocal->execute();
+    $idLocal = $conn->insert_id;
+
+    $stmt = $conn->prepare(
+        'INSERT INTO denuncias (descricao, id_status, id_usuario, id_local, id_tipo, prioridade, data_ocorrencia)
+         VALUES (?, ?, ?, ?, ?, ?, NOW())'
+    );
+    $stmt->bind_param('siiiii', $descricao, $idStatus, $idUsuario, $idLocal, $idTipo, $prioridade);
     $stmt->execute();
+    $idDenuncia = $conn->insert_id;
+
+    // O trigger trg_denuncia_status_after_historico sincroniza denuncias.id_status
+    $stmtHist = $conn->prepare(
+        "INSERT INTO historico_status (id_denuncia, id_usuario, id_status_anterior, id_status_novo, observacao)
+         VALUES (?, ?, NULL, ?, 'Denúncia criada')"
+    );
+    $stmtHist->bind_param('iii', $idDenuncia, $idUsuario, $idStatus);
+    $stmtHist->execute();
 
     $conn->commit();
 
     echo json_encode([
-        "success" => true,
-        "message" => "Denúncia criada",
-        "id_denuncia" => $stmt->insert_id
+        'success'     => true,
+        'message'     => 'Denúncia criada',
+        'id_denuncia' => $idDenuncia,
+        'id_local'    => $idLocal,
     ]);
-} catch (Exception $e) {
+} catch (mysqli_sql_exception $e) {
     $conn->rollback();
-    http_response_code(500);
-    echo json_encode(["success" => false, "message" => "Erro ao criar denúncia"]);
+    error_log($e->getMessage());
+    responder(500, ['success' => false, 'message' => 'Erro ao criar denúncia']);
 }
