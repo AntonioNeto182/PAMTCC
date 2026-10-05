@@ -1,11 +1,8 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: 'http://192.168.0.127/simav_api',
-  timeout: 10000,
-  headers: {
-    'Content-Type': 'application/json',
-  },
+  baseURL: process.env.EXPO_PUBLIC_API_URL ?? 'http://192.168.0.127/simav_api',
+  timeout: 15000,
 });
 
 export default api;

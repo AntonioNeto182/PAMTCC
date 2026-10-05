@@ -1,13 +1,39 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { View, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 
-const API_BASE_URL = 'http://192.168.0.127/simav_api';
+import api from '../services/api';
+import { PINS_CSS, PINS_JS } from './mapaPins';
 
-const mapaHtmlBase = `
+const CENTRO_REGISTRO = [-24.4979, -47.8447];
+const TEMPO_MAX_GPS_MS = 5000;
+const ATRASO_REVELAR_MS = 350;
+
+const CONFIG = {
+  apiUrl: api.defaults.baseURL,
+  // Raio geográfico (m) da zona. Fixo: não depende do zoom, então zonas não se fundem ao afastar.
+  raioZonaMetros: 150,
+  // Tamanho mínimo do círculo na tela (px), para continuar visível com zoom afastado.
+  raioMinimoPx: 8,
+  // Zoom aplicado ao focar uma denúncia vinda do perfil.
+  zoomFoco: 17,
+  // Status que não contam para as zonas (os pins continuam aparecendo).
+  statusIgnorados: ['resolvida', 'rejeitada'],
+  // Quantidade MÍNIMA de denúncias por nível, em ordem decrescente.
+  // O menor "min" também é o mínimo para a zona existir.
+  niveis: [
+    { min: 16, cor: '#8e24aa', rotulo: 'Área crítica' },
+    { min: 11, cor: '#f44336', rotulo: 'Concentração muito alta' },
+    { min: 7, cor: '#ff9800', rotulo: 'Alta concentração' },
+    { min: 4, cor: '#ffd54f', rotulo: 'Concentração moderada' },
+    { min: 2, cor: '#4caf50', rotulo: 'Baixa concentração' },
+  ],
+};
+
+const gerarHtml = (config) => `
 <!DOCTYPE html>
 <html>
 <head>
@@ -16,11 +42,6 @@ const mapaHtmlBase = `
   <style>
     html, body { height: 100%; margin: 0; padding: 0; }
     #map { height: 100%; width: 100%; }
-
-    .popup-denuncia { max-width: 200px; }
-    .popup-denuncia .tipo { font-weight: bold; font-size: 14px; margin: 0 0 4px; }
-    .popup-denuncia .descricao { font-size: 12px; color: #444; margin: 0 0 6px; max-height: 60px; overflow-y: auto; }
-    .popup-denuncia img { width: 100%; border-radius: 6px; margin-top: 4px; }
 
     .popup-zona .titulo { font-weight: bold; font-size: 13px; margin: 0 0 4px; }
     .popup-zona .linha { font-size: 12px; color: #444; margin: 0; }
@@ -34,50 +55,29 @@ const mapaHtmlBase = `
     }
 
     .legenda-zonas {
-      position: absolute;
-      bottom: 16px;
-      left: 10px;
+      position: absolute; bottom: 16px; left: 10px;
       background: rgba(255,255,255,0.95);
-      border-radius: 8px;
-      padding: 8px 10px;
+      border-radius: 8px; padding: 8px 10px;
       box-shadow: 0 1px 4px rgba(0,0,0,0.3);
-      font-family: sans-serif;
-      z-index: 1000;
-      max-width: 160px;
+      font-family: sans-serif; z-index: 1000; max-width: 170px;
+      display: none;
     }
-    .legenda-zonas .item {
-      display: flex;
-      align-items: center;
-      margin-bottom: 3px;
-    }
-    .legenda-zonas .swatch {
-      width: 12px; height: 12px;
-      border-radius: 3px;
-      margin-right: 6px;
-      flex-shrink: 0;
-    }
-    .legenda-zonas .label {
-      font-size: 10px;
-      color: #333;
-    }
-    .legenda-zonas .titulo {
-      font-size: 11px;
-      font-weight: bold;
-      margin-bottom: 5px;
-      color: #222;
-    }
+    .legenda-zonas .titulo { font-size: 11px; font-weight: bold; margin-bottom: 5px; color: #222; }
+    .legenda-zonas .item { display: flex; align-items: center; margin-bottom: 3px; }
+    .legenda-zonas .swatch { width: 12px; height: 12px; border-radius: 50%; margin-right: 6px; flex-shrink: 0; }
+    .legenda-zonas .label { font-size: 10px; color: #333; }
+    .legenda-zonas .nota { font-size: 9px; color: #777; margin-top: 4px; }
+
+    ${PINS_CSS}
   </style>
 </head>
 <body>
   <div id="map"></div>
-
-  <div class="legenda-zonas" id="legenda">
-    <div class="titulo">Concentração de denúncias</div>
-  </div>
+  <div class="legenda-zonas" id="legenda"></div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
-    const API_URL = "${API_BASE_URL}";
+    const CFG = ${JSON.stringify(config)};
 
     const map = L.map('map', {
       tap: false,
@@ -86,62 +86,23 @@ const mapaHtmlBase = `
       maxZoom: 19,
       minZoom: 3,
       bounceAtZoomLimits: false,
-    }).setView([-23.5478, -46.6361], 14);
+    }).setView(${JSON.stringify(CENTRO_REGISTRO)}, 14);
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; OpenStreetMap contributors',
       maxZoom: 19,
     }).addTo(map);
 
+    ${PINS_JS}
+
     let marcadores = [];
+    let circulos = [];
     let marcadorUsuario = null;
     let posicaoUsuario = null;
-    let denunciasAtuais = [];
-    let exibindoDenuncias = false;
+    let dadosCarregados = false;
+    let focoPendente = null;
 
     const zonasLayer = L.layerGroup().addTo(map);
-
-    const PALETA_CORES = [
-      '#ff4b4b', '#ff9f1a', '#1a73e8', '#8e44ad',
-      '#16a085', '#e91e63', '#795548', '#607d8b'
-    ];
-
-    function corPorTipo(tipo) {
-      if (!tipo) return PALETA_CORES[0];
-      let hash = 0;
-      for (let i = 0; i < tipo.length; i++) {
-        hash = tipo.charCodeAt(i) + ((hash << 5) - hash);
-      }
-      return PALETA_CORES[Math.abs(hash) % PALETA_CORES.length];
-    }
-
-    // ===================== PINS DE DENÚNCIA =====================
-
-    function tamanhoPorZoom(zoom) {
-      const min = 24;
-      const max = 48;
-      const escala = (zoom - map.getMinZoom()) / (map.getMaxZoom() - map.getMinZoom());
-      return Math.round(max - escala * (max - min));
-    }
-
-    function criarIcone(tamanho, cor) {
-      const largura = tamanho;
-      const altura = Math.round(tamanho * 1.4);
-
-      const svg =
-        '<svg width="' + largura + '" height="' + altura + '" viewBox="0 0 24 34" xmlns="http://www.w3.org/2000/svg">' +
-        '<path d="M12 0C5.4 0 0 5.6 0 12.4 0 21 12 34 12 34S24 21 24 12.4C24 5.6 18.6 0 12 0Z" fill="' + cor + '" stroke="#fff" stroke-width="1.5"/>' +
-        '<circle cx="12" cy="12" r="5" fill="#fff"/>' +
-        '</svg>';
-
-      return L.divIcon({
-        className: '',
-        html: svg,
-        iconSize: [largura, altura],
-        iconAnchor: [largura / 2, altura],
-        popupAnchor: [0, -altura],
-      });
-    }
 
     function iconeUsuario() {
       return L.divIcon({
@@ -152,198 +113,140 @@ const mapaHtmlBase = `
       });
     }
 
+    // ===================== PINS (AGRUPADOS POR LOCAL) =====================
+
     function atualizarTamanhoDosMarcadores() {
       const tamanho = tamanhoPorZoom(map.getZoom());
-      marcadores.forEach(m => m.setIcon(criarIcone(tamanho, m.corTipo)));
-    }
-
-    function montarHtmlPopup(d) {
-      let html = '<div class="popup-denuncia">';
-      html += '<p class="tipo" style="color:' + corPorTipo(d.tipo) + '">' + (d.tipo || 'Sem tipo') + '</p>';
-      html += '<p class="descricao">' + (d.descricao && d.descricao.length ? d.descricao : 'Sem descrição informada') + '</p>';
-
-      if (d.imagem) {
-        html += '<img src="' + API_URL + '/uploads/' + d.imagem + '" />';
-      }
-
-      html += '</div>';
-      return html;
+      marcadores.forEach(function (m) { reiconarMarcador(m, tamanho); });
     }
 
     function limparMarcadores() {
-      marcadores.forEach(m => map.removeLayer(m));
+      marcadores.forEach(function (m) { map.removeLayer(m); });
       marcadores = [];
     }
 
     function desenharMarcadores(denuncias) {
       limparMarcadores();
-      const tamanhoAtual = tamanhoPorZoom(map.getZoom());
+      const tamanho = tamanhoPorZoom(map.getZoom());
 
-      denuncias.forEach(d => {
-        const cor = corPorTipo(d.tipo);
-        const marcador = L.marker([d.latitude, d.longitude], {
-          icon: criarIcone(tamanhoAtual, cor),
-        }).addTo(map);
-
-        marcador.corTipo = cor;
-        marcador.bindPopup(montarHtmlPopup(d));
-        marcadores.push(marcador);
+      agruparPorLocal(denuncias).forEach(function (grupo) {
+        marcadores.push(criarMarcadorGrupo(grupo, tamanho, null).addTo(map));
       });
     }
 
-    // ===================== ZONAS DE DENSIDADE =====================
+    // ===================== FOCO EM UMA DENÚNCIA =====================
 
-    // Escala de classificação: [limiteSuperior, corRGB, rótulo]
-    const ESCALA = [
-      { max: 5,        cor: [76, 175, 80],   label: 'Baixa concentração' },
-      { max: 15,       cor: [255, 213, 79],  label: 'Concentração moderada' },
-      { max: 30,       cor: [255, 152, 0],   label: 'Alta concentração' },
-      { max: 50,       cor: [244, 67, 54],   label: 'Concentração muito alta' },
-      { max: Infinity, cor: [142, 36, 170],  label: 'Área crítica' },
-    ];
+    // Só aplica depois que os pins foram desenhados; antes disso fica pendente.
+    function aplicarFoco() {
+      if (!focoPendente || !dadosCarregados) return;
 
-    const TETO_VISUAL = 70; // acima disso, cor já satura totalmente no roxo
+      const f = focoPendente;
+      focoPendente = null;
 
-    function classificar(densidade) {
-      for (let i = 0; i < ESCALA.length; i++) {
-        if (densidade <= ESCALA[i].max) return ESCALA[i];
-      }
-      return ESCALA[ESCALA.length - 1];
-    }
-
-    // Interpolação contínua de cor ao longo da escala, para transição progressiva
-    function corInterpolada(densidade) {
-      const pontos = [0, 5, 15, 30, 50, TETO_VISUAL];
-      const cores = [ESCALA[0].cor, ESCALA[0].cor, ESCALA[1].cor, ESCALA[2].cor, ESCALA[3].cor, ESCALA[4].cor];
-
-      const d = Math.min(densidade, TETO_VISUAL);
-
-      for (let i = 0; i < pontos.length - 1; i++) {
-        if (d >= pontos[i] && d <= pontos[i + 1]) {
-          const t = (pontos[i + 1] - pontos[i]) === 0 ? 0 : (d - pontos[i]) / (pontos[i + 1] - pontos[i]);
-          const c1 = cores[i];
-          const c2 = cores[i + 1];
-          const r = Math.round(c1[0] + (c2[0] - c1[0]) * t);
-          const g = Math.round(c1[1] + (c2[1] - c1[1]) * t);
-          const b = Math.round(c1[2] + (c2[2] - c1[2]) * t);
-          return 'rgb(' + r + ',' + g + ',' + b + ')';
-        }
-      }
-      const ultima = cores[cores.length - 1];
-      return 'rgb(' + ultima[0] + ',' + ultima[1] + ',' + ultima[2] + ')';
-    }
-
-    // Tamanho da célula da grade (em metros), menor conforme o zoom aumenta
-    function tamanhoCelulaMetros(zoom) {
-      const base = 4000; // metros, referência no zoom 12
-      const escala = Math.pow(2, zoom - 12);
-      let tamanho = base / escala;
-      return Math.max(60, Math.min(4000, tamanho));
-    }
-
-    function limparZonas() {
-      zonasLayer.clearLayers();
-    }
-
-    function calcularZonas(denuncias) {
-      if (denuncias.length < 2) return [];
-
-      const zoom = map.getZoom();
-      const cellM = tamanhoCelulaMetros(zoom);
-
-      const centerLat = map.getCenter().lat;
-      const mPorGrauLat = 111320;
-      const mPorGrauLng = 111320 * Math.cos(centerLat * Math.PI / 180);
-
-      const cellDegLat = cellM / mPorGrauLat;
-      const cellDegLng = cellM / mPorGrauLng;
-
-      const grade = {};
-
-      denuncias.forEach(d => {
-        const cx = Math.floor(d.longitude / cellDegLng);
-        const cy = Math.floor(d.latitude / cellDegLat);
-        const chave = cx + '_' + cy;
-
-        if (!grade[chave]) grade[chave] = { cx, cy, itens: [] };
-        grade[chave].itens.push(d);
+      const alvo = marcadores.find(function (m) {
+        return m.grupo.itens.some(function (i) { return i.id_denuncia === f.id; });
       });
 
-      const areaM2 = cellM * cellM;
-      const areaUnidades = areaM2 / 10000; // densidade por 10.000 m²
+      map.setView([f.latitude, f.longitude], CFG.zoomFoco, { animate: false });
+      if (alvo) alvo.openPopup();
+    }
 
+    function definirFoco(foco) {
+      focoPendente = foco;
+      aplicarFoco();
+    }
+
+    // ===================== ZONAS (CÍRCULOS) =====================
+
+    function nivelPara(qtd) {
+      return CFG.niveis.find(function (n) { return qtd >= n.min; }) || null;
+    }
+
+    // Agrupamento por distância em metros: o resultado não depende do zoom.
+    // Cada denúncia (inclusive corroborações) conta para a zona.
+    function agrupar(denuncias) {
       const zonas = [];
 
-      Object.values(grade).forEach(cel => {
-        if (cel.itens.length < 2) return; // zona só existe com 2+ denúncias próximas
+      denuncias.forEach(function (d) {
+        const ponto = L.latLng(d.latitude, d.longitude);
+        let melhor = null;
+        let menor = Infinity;
 
-        const densidade = cel.itens.length / areaUnidades;
-
-        const sul = cel.cy * cellDegLat;
-        const norte = sul + cellDegLat;
-        const oeste = cel.cx * cellDegLng;
-        const leste = oeste + cellDegLng;
-
-        zonas.push({
-          bounds: [[sul, oeste], [norte, leste]],
-          count: cel.itens.length,
-          densidade,
-          areaM2,
+        zonas.forEach(function (z) {
+          const dist = map.distance(z.centro, ponto);
+          if (dist <= CFG.raioZonaMetros && dist < menor) { melhor = z; menor = dist; }
         });
+
+        if (melhor) {
+          melhor.itens.push(d);
+          const n = melhor.itens.length;
+          melhor.centro = L.latLng(
+            melhor.centro.lat + (ponto.lat - melhor.centro.lat) / n,
+            melhor.centro.lng + (ponto.lng - melhor.centro.lng) / n
+          );
+        } else {
+          zonas.push({ centro: ponto, itens: [d] });
+        }
       });
 
       return zonas;
     }
 
-    function desenharZonas() {
+    function limparZonas() {
+      zonasLayer.clearLayers();
+      circulos = [];
+    }
+
+    function ajustarRaios() {
+      const metrosPorPx = 156543.03392 * Math.cos(map.getCenter().lat * Math.PI / 180) / Math.pow(2, map.getZoom());
+      const minimo = CFG.raioMinimoPx * metrosPorPx;
+      circulos.forEach(function (c) { c.setRadius(Math.max(CFG.raioZonaMetros, minimo)); });
+    }
+
+    function desenharZonas(denuncias) {
       limparZonas();
 
-      if (!exibindoDenuncias || denunciasAtuais.length < 2) return;
+      const ativas = denuncias.filter(function (d) {
+        return CFG.statusIgnorados.indexOf(d.status) === -1;
+      });
 
-      const zonas = calcularZonas(denunciasAtuais);
+      agrupar(ativas).forEach(function (zona) {
+        const nivel = nivelPara(zona.itens.length);
+        if (!nivel) return;
 
-      zonas.forEach(zona => {
-        const cor = corInterpolada(zona.densidade);
-        const classe = classificar(zona.densidade);
-
-        // Opacidade também progressiva, mais intensa quanto maior a densidade
-        const opacidade = Math.min(0.75, 0.25 + (zona.densidade / TETO_VISUAL) * 0.5);
-
-        const retangulo = L.rectangle(zona.bounds, {
-          color: cor,
-          weight: 1,
-          fillColor: cor,
-          fillOpacity: opacidade,
-          stroke: false,
+        const circulo = L.circle(zona.centro, {
+          radius: CFG.raioZonaMetros,
+          color: nivel.cor,
+          fillColor: nivel.cor,
+          fillOpacity: 0.35,
+          weight: 2,
         }).addTo(zonasLayer);
-
-        const areaTexto = zona.areaM2 >= 1000000
-          ? (zona.areaM2 / 1000000).toFixed(2) + ' km²'
-          : Math.round(zona.areaM2) + ' m²';
 
         const html =
           '<div class="popup-zona">' +
-          '<p class="titulo">' + classe.label + '</p>' +
-          '<p class="linha">Denúncias na área: ' + zona.count + '</p>' +
-          '<p class="linha">Densidade: ' + zona.densidade.toFixed(1) + ' / 10.000 m²</p>' +
-          '<p class="linha">Área analisada: ' + areaTexto + '</p>' +
+          '<p class="titulo">' + escapar(nivel.rotulo) + '</p>' +
+          '<p class="linha">Denúncias na área: ' + zona.itens.length + '</p>' +
+          '<p class="linha">Raio: ' + CFG.raioZonaMetros + ' m</p>' +
           '</div>';
 
-        retangulo.bindPopup(html);
+        circulo.bindPopup(html);
+        circulos.push(circulo);
       });
+
+      ajustarRaios();
     }
 
     function montarLegenda() {
-      const legenda = document.getElementById('legenda');
+      const minimo = CFG.niveis[CFG.niveis.length - 1].min;
       let html = '<div class="titulo">Concentração de denúncias</div>';
 
-      ESCALA.forEach(nivel => {
-        const cor = 'rgb(' + nivel.cor[0] + ',' + nivel.cor[1] + ',' + nivel.cor[2] + ')';
-        html += '<div class="item"><div class="swatch" style="background:' + cor + '"></div>' +
-          '<div class="label">' + nivel.label + '</div></div>';
+      CFG.niveis.slice().reverse().forEach(function (nivel) {
+        html += '<div class="item"><div class="swatch" style="background:' + nivel.cor + '"></div>' +
+          '<div class="label">' + escapar(nivel.rotulo) + '</div></div>';
       });
 
-      legenda.innerHTML = html;
+      html += '<div class="nota">Zona: ' + minimo + '+ denúncias em ' + CFG.raioZonaMetros + ' m</div>';
+      document.getElementById('legenda').innerHTML = html;
     }
 
     montarLegenda();
@@ -351,23 +254,18 @@ const mapaHtmlBase = `
     // ===================== FUNÇÕES CHAMADAS PELO REACT NATIVE =====================
 
     function atualizarMarcadores(denuncias) {
-      denunciasAtuais = denuncias;
-      exibindoDenuncias = true;
       desenharMarcadores(denuncias);
-      desenharZonas();
-
-      const legenda = document.getElementById('legenda');
-      legenda.style.display = 'block';
+      desenharZonas(denuncias);
+      document.getElementById('legenda').style.display = 'block';
+      dadosCarregados = true;
+      aplicarFoco();
     }
 
     function ocultarMarcadores() {
-      exibindoDenuncias = false;
-      denunciasAtuais = [];
+      dadosCarregados = false;
       limparMarcadores();
       limparZonas();
-
-      const legenda = document.getElementById('legenda');
-      legenda.style.display = 'none';
+      document.getElementById('legenda').style.display = 'none';
     }
 
     function definirLocalizacaoUsuario(lat, lng, centralizar) {
@@ -382,9 +280,7 @@ const mapaHtmlBase = `
         }).addTo(map);
       }
 
-      if (centralizar) {
-        map.setView(posicaoUsuario, 16);
-      }
+      if (centralizar) map.setView(posicaoUsuario, 16);
     }
 
     function recentralizarNoUsuario() {
@@ -394,126 +290,173 @@ const mapaHtmlBase = `
 
     // ===================== EVENTOS DO MAPA =====================
 
-    let debounceZoom = null;
-
-    function recalcularNoZoomOuMovimento() {
+    map.on('zoomend', function () {
       atualizarTamanhoDosMarcadores();
-
-      if (debounceZoom) clearTimeout(debounceZoom);
-      debounceZoom = setTimeout(() => {
-        desenharZonas();
-      }, 150);
-    }
-
-    map.on('zoomend', recalcularNoZoomOuMovimento);
-    map.on('moveend', function () {
-      if (debounceZoom) clearTimeout(debounceZoom);
-      debounceZoom = setTimeout(() => {
-        desenharZonas();
-      }, 150);
+      ajustarRaios();
     });
   </script>
 </body>
 </html>
 `;
 
-export default function Mapa({ mostrarDenuncias }) {
+const comTimeout = (promessa, ms) =>
+  Promise.race([promessa, new Promise((resolve) => setTimeout(() => resolve(null), ms))]);
+
+export default function Mapa({ mostrarDenuncias, focar = null }) {
   const webviewRef = useRef(null);
   const carregadoRef = useRef(false);
+  const posicaoRef = useRef(null);
+  const focarRef = useRef(focar);
+  focarRef.current = focar;
+
+  const html = useRef(gerarHtml(CONFIG)).current;
+
+  const [webviewPronto, setWebviewPronto] = useState(false);
+  const [gpsResolvido, setGpsResolvido] = useState(false);
+  const [visivel, setVisivel] = useState(false);
   const [localizacaoPronta, setLocalizacaoPronta] = useState(false);
 
-  async function pedirLocalizacaoECentralizar(centralizar) {
-    const { status } = await Location.requestForegroundPermissionsAsync();
+  // GPS começa já na montagem, em paralelo ao carregamento do WebView
+  useEffect(() => {
+    let ativo = true;
 
-    if (status !== 'granted') {
-      console.warn('Permissão de localização negada.');
-      return;
-    }
+    (async () => {
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== 'granted') return;
 
-    try {
-      const posicao = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
+        const ultima = await Location.getLastKnownPositionAsync();
+        if (ultima) {
+          posicaoRef.current = ultima.coords;
+          return;
+        }
 
-      webviewRef.current?.injectJavaScript(`
-        definirLocalizacaoUsuario(${posicao.coords.latitude}, ${posicao.coords.longitude}, ${centralizar});
-        true;
-      `);
+        const atual = await comTimeout(
+          Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
+          TEMPO_MAX_GPS_MS
+        );
+        if (atual) posicaoRef.current = atual.coords;
+      } catch (erro) {
+        console.error('Erro ao obter localização:', erro);
+      } finally {
+        if (ativo) setGpsResolvido(true);
+      }
+    })();
 
+    return () => {
+      ativo = false;
+    };
+  }, []);
+
+  // Só revela o mapa quando WebView e GPS estão prontos: sem "pulo" de posição
+  useEffect(() => {
+    if (!webviewPronto || !gpsResolvido) return;
+
+    const coords = posicaoRef.current;
+
+    if (coords) {
+      // Com foco definido, o GPS não pode recentralizar o mapa por cima dele
+      const centralizar = !focarRef.current;
+      webviewRef.current?.injectJavaScript(
+        `definirLocalizacaoUsuario(${Number(coords.latitude)}, ${Number(coords.longitude)}, ${centralizar}); true;`
+      );
       setLocalizacaoPronta(true);
-    } catch (erro) {
-      console.error('Erro ao obter localização:', erro);
     }
-  }
 
-  async function buscarEExibirDenuncias() {
+    const t = setTimeout(() => setVisivel(true), ATRASO_REVELAR_MS);
+
+    // Refina a posição em segundo plano, sem mover a câmera
+    Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced })
+      .then(({ coords: precisa }) => {
+        posicaoRef.current = precisa;
+        webviewRef.current?.injectJavaScript(
+          `definirLocalizacaoUsuario(${Number(precisa.latitude)}, ${Number(precisa.longitude)}, false); true;`
+        );
+        setLocalizacaoPronta(true);
+      })
+      .catch(() => {});
+
+    return () => clearTimeout(t);
+  }, [webviewPronto, gpsResolvido]);
+
+  const buscarEExibirDenuncias = useCallback(async () => {
     try {
-      const resposta = await fetch(`${API_BASE_URL}/denuncias/listar_mapa.php`);
-      const denuncias = await resposta.json();
+      const { data } = await api.get('/denuncias/listar_mapa.php');
 
       webviewRef.current?.injectJavaScript(`
-        atualizarMarcadores(${JSON.stringify(denuncias)});
+        atualizarMarcadores(${JSON.stringify(data)});
         true;
       `);
     } catch (erro) {
       console.error('Erro ao buscar denúncias:', erro);
     }
-  }
+  }, []);
 
-  function ocultarDenuncias() {
-    webviewRef.current?.injectJavaScript(`
-      ocultarMarcadores();
-      true;
-    `);
-  }
+  const ocultarDenuncias = useCallback(() => {
+    webviewRef.current?.injectJavaScript('ocultarMarcadores(); true;');
+  }, []);
+
+  const injetarFoco = useCallback(() => {
+    const f = focarRef.current;
+    if (!f || !carregadoRef.current) return;
+
+    const foco = {
+      id: Number(f.id),
+      latitude: Number(f.latitude),
+      longitude: Number(f.longitude),
+    };
+
+    webviewRef.current?.injectJavaScript(`definirFoco(${JSON.stringify(foco)}); true;`);
+  }, []);
 
   function recentralizar() {
-    webviewRef.current?.injectJavaScript(`
-      recentralizarNoUsuario();
-      true;
-    `);
+    webviewRef.current?.injectJavaScript('recentralizarNoUsuario(); true;');
   }
 
   useEffect(() => {
     if (!carregadoRef.current) return;
 
-    if (mostrarDenuncias) {
-      buscarEExibirDenuncias();
-    } else {
-      ocultarDenuncias();
-    }
-  }, [mostrarDenuncias]);
+    if (mostrarDenuncias) buscarEExibirDenuncias();
+    else ocultarDenuncias();
+  }, [mostrarDenuncias, buscarEExibirDenuncias, ocultarDenuncias]);
+
+  useEffect(() => {
+    injetarFoco();
+  }, [focar?.ts, injetarFoco]);
 
   useFocusEffect(
     useCallback(() => {
-      if (carregadoRef.current && mostrarDenuncias) {
-        buscarEExibirDenuncias();
-      }
-    }, [mostrarDenuncias])
+      if (carregadoRef.current && mostrarDenuncias) buscarEExibirDenuncias();
+    }, [mostrarDenuncias, buscarEExibirDenuncias])
   );
 
   function handleLoadEnd() {
     carregadoRef.current = true;
-    pedirLocalizacaoECentralizar(true);
+    setWebviewPronto(true);
 
-    if (mostrarDenuncias) {
-      buscarEExibirDenuncias();
-    }
+    if (mostrarDenuncias) buscarEExibirDenuncias();
+    injetarFoco();
   }
 
   return (
     <View style={styles.container}>
       <WebView
         ref={webviewRef}
-        style={{ flex: 1 }}
+        style={styles.container}
         originWhitelist={['*']}
-        source={{ html: mapaHtmlBase }}
+        source={{ html }}
         javaScriptEnabled
         domStorageEnabled
         onLoadEnd={handleLoadEnd}
       />
 
-      {localizacaoPronta && (
+      {!visivel && (
+        <View style={styles.carregandoMapa}>
+          <ActivityIndicator size="large" color="#ff4b4b" />
+        </View>
+      )}
+
+      {visivel && localizacaoPronta && (
         <TouchableOpacity style={styles.botaoRecentralizar} onPress={recentralizar}>
           <Ionicons name="locate" size={22} color="#fff" />
         </TouchableOpacity>
@@ -524,7 +467,12 @@ export default function Mapa({ mostrarDenuncias }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-
+  carregandoMapa: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#f6f6f6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   botaoRecentralizar: {
     position: 'absolute',
     bottom: 16,

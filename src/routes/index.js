@@ -8,8 +8,8 @@ import Login from "../paginas/login";
 import CriarConta from "../paginas/criar_conta";
 import Inicio from "../paginas/pagina_inicial";
 import EsqueceuSenha from "../paginas/esqueceu_senha";
-// import Perfil from "../paginas/perfil"; // tela ainda não criada
-// import Mapa from "../paginas/mapa"; // tela ainda não implementada
+import Perfil from "../paginas/perfil";
+import Estatisticas from "../paginas/estatisticas";
 import SelecionarLocal from "../paginas/selecionar_local";
 import RegistrarDenuncia from "../paginas/registrar_denuncia";
 
@@ -26,8 +26,8 @@ export default function Routes() {
         <Stack.Screen name="CriarConta" component={CriarConta} />
         <Stack.Screen name="Inicio" component={Inicio} />
         <Stack.Screen name="EsqueceuSenha" component={EsqueceuSenha} />
-        {/* <Stack.Screen name="Perfil" component={Perfil} /> */}
-        {/* <Stack.Screen name="Mapa" component={Mapa} /> */}
+        <Stack.Screen name="Perfil" component={Perfil} />
+        <Stack.Screen name="Estatisticas" component={Estatisticas} />
         <Stack.Screen name="SelecionarLocal" component={SelecionarLocal} />
         <Stack.Screen name="RegistrarDenuncia" component={RegistrarDenuncia} />
       </Stack.Navigator>

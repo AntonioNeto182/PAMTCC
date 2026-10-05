@@ -1,51 +1,49 @@
-import { StyleSheet } from 'react-native';
+import { StyleSheet } from "react-native";
 
 export const styles = StyleSheet.create({
-
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
   },
 
-  header: {
+    header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingTop: 10,
-    paddingBottom: 10,
+    paddingVertical: 12,
+    backgroundColor: '#fff',
   },
-
   headerLogo: {
     flexDirection: 'row',
     alignItems: 'center',
   },
-
   headerLogoImage: {
-    width: 28,
-    height: 28,
+    width: 40,
+    height: 40,
     resizeMode: 'contain',
-    marginRight: 6,
+    marginRight: 8,
   },
 
   headerLogoText: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#333',
+    fontSize: 20,
+    fontWeight: "bold",
+    color: "#333",
+    marginLeft: 8, 
   },
 
   profileButton: {
     width: 34,
     height: 34,
     borderRadius: 17,
-    backgroundColor: '#ff7b39',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: "#ff7b39",
+    alignItems: "center",
+    justifyContent: "center",
   },
 
   ctaArea: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    justifyContent: "space-between",
     paddingHorizontal: 20,
     gap: 10,
   },
@@ -53,34 +51,34 @@ export const styles = StyleSheet.create({
   ctaButton: {
     flex: 1,
     borderRadius: 20,
-    overflow: 'hidden',
+    overflow: "hidden",
   },
 
   ctaGradient: {
     paddingVertical: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     borderRadius: 20,
   },
 
   ctaText: {
-    color: '#fff',
+    color: "#fff",
     fontSize: 13,
-    fontWeight: 'bold',
-    textAlign: 'center',
+    fontWeight: "bold",
+    textAlign: "center",
   },
 
   searchArea: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#fff',
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#fff",
     marginHorizontal: 20,
     marginTop: 16,
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 25,
     elevation: 3,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOpacity: 0.1,
     shadowRadius: 4,
     shadowOffset: { width: 0, height: 2 },
@@ -90,11 +88,11 @@ export const styles = StyleSheet.create({
     flex: 1,
     marginLeft: 8,
     fontSize: 14,
-    color: '#333',
+    color: "#333",
   },
 
   filtrosArea: {
-    flexDirection: 'row',
+    flexDirection: "row",
     paddingHorizontal: 20,
     marginTop: 14,
     marginBottom: 10,
@@ -105,30 +103,29 @@ export const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 20,
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     borderWidth: 1,
-    borderColor: '#eee',
+    borderColor: "#eee",
     elevation: 2,
   },
 
   filtroPillAtivo: {
-    backgroundColor: '#ff4b4b',
-    borderColor: '#ff4b4b',
+    backgroundColor: "#ff4b4b",
+    borderColor: "#ff4b4b",
   },
 
   filtroTexto: {
     fontSize: 13,
-    color: '#555',
-    fontWeight: '600',
+    color: "#555",
+    fontWeight: "600",
   },
 
   filtroTextoAtivo: {
-    color: '#fff',
+    color: "#fff",
   },
 
   mapa: {
     flex: 1,
     marginTop: 4,
   },
-
 });

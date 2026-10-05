@@ -1,7 +1,6 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 
 import {
-  SafeAreaView,
   View,
   Text,
   TextInput,
@@ -9,7 +8,9 @@ import {
   Image,
 } from "react-native";
 
-import { useNavigation } from "@react-navigation/native";
+import { SafeAreaView } from "react-native-safe-area-context";
+
+import { useNavigation, useRoute } from "@react-navigation/native";
 
 import { Ionicons } from "@expo/vector-icons";
 
@@ -21,19 +22,36 @@ import Logo from "../../../assets/icons/logo.png";
 
 import Mapa from "../../components/Mapa";
 
+import MenuLateral from "../../components/MenuLateral";
+
+import { useFotoPerfil } from "../../hooks/useFotoPerfil";
+
 const filtros = ["Casos", "Focos", "Regiões", "Alertas"];
 
 export default function Inicio() {
   const navigation = useNavigation();
+  const route = useRoute();
+  const { fotoUri, aoFalhar } = useFotoPerfil();
+
+  // Enviado pelo perfil (clique em uma denúncia) e pelas estatísticas ("Mapa de calor")
+  const focar = route.params?.focarDenuncia ?? null;
+  const abrirMapa = route.params?.abrirMapa ?? null;
 
   const [busca, setBusca] = useState("");
   const [filtroAtivo, setFiltroAtivo] = useState("Casos");
-  const [mostrarDenuncias, setMostrarDenuncias] = useState(false);
+  const [mostrarDenuncias, setMostrarDenuncias] = useState(
+    Boolean(focar || abrirMapa)
+  );
+  const [menuAberto, setMenuAberto] = useState(false);
+
+  useEffect(() => {
+    if (focar || abrirMapa) setMostrarDenuncias(true);
+  }, [focar?.ts, abrirMapa]);
 
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity>
+        <TouchableOpacity onPress={() => setMenuAberto(true)}>
           <Ionicons name="menu" size={28} color="#333" />
         </TouchableOpacity>
 
@@ -44,10 +62,18 @@ export default function Inicio() {
         </View>
 
         <TouchableOpacity
-          style={styles.profileButton}
+          style={[styles.profileButton, fotoUri && { overflow: "hidden" }]}
           onPress={() => navigation.navigate("Perfil")}
         >
-          <Ionicons name="person" size={20} color="#fff" />
+          {fotoUri ? (
+            <Image
+              source={{ uri: fotoUri }}
+              style={{ width: "100%", height: "100%" }}
+              onError={aoFalhar}
+            />
+          ) : (
+            <Ionicons name="person" size={20} color="#fff" />
+          )}
         </TouchableOpacity>
       </View>
 
@@ -115,8 +141,14 @@ export default function Inicio() {
       </View>
 
       <View style={styles.mapa}>
-        <Mapa mostrarDenuncias={mostrarDenuncias} />
+        <Mapa mostrarDenuncias={mostrarDenuncias} focar={focar} />
       </View>
+
+      <MenuLateral
+        visible={menuAberto}
+        onClose={() => setMenuAberto(false)}
+        ativo="mapa"
+      />
     </SafeAreaView>
   );
 }

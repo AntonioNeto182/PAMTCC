@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import {
-  SafeAreaView,
   View,
   Text,
   TextInput,
@@ -9,44 +8,70 @@ import {
   ScrollView,
   Alert,
 } from 'react-native';
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import api from '../../services/api';
+import { buscarEndereco } from '../../services/geocodificacao';
 import { styles } from './styles';
 import Logo from '../../../assets/icons/logo.png';
+import MenuLateral from '../../components/MenuLateral';
 
 export default function RegistrarDenuncia() {
   const navigation = useNavigation();
   const route = useRoute();
 
-  const { latitude, longitude, endereco: enderecoInicial, bairro: bairroInicial } = route.params || {};
+  const {
+    latitude,
+    longitude,
+    endereco: enderecoInicial,
+    bairro: bairroInicial,
+  } = route.params ?? {};
 
-  const [endereco, setEndereco] = useState(enderecoInicial || '');
-  const [bairro, setBairro] = useState(bairroInicial || '');
+  const [endereco, setEndereco] = useState(enderecoInicial ?? '');
+  const [bairro, setBairro] = useState(bairroInicial ?? '');
   const [descricao, setDescricao] = useState('');
   const [tipos, setTipos] = useState([]);
   const [idTipo, setIdTipo] = useState(null);
   const [imagem, setImagem] = useState(null);
   const [enviando, setEnviando] = useState(false);
+  const [menuAberto, setMenuAberto] = useState(false);
 
   useEffect(() => {
     async function carregarTipos() {
       try {
-        const resposta = await api.get('/denuncias/listar_tipos.php');
-        setTipos(resposta.data);
-        if (resposta.data.length > 0) {
-          setIdTipo(resposta.data[0].id_tipo);
-        }
+        const { data } = await api.get('/denuncias/listar_tipos.php');
+        setTipos(data);
+        if (data.length > 0) setIdTipo(data[0].id_tipo);
       } catch (erro) {
         console.error('Erro ao carregar tipos:', erro);
       }
     }
     carregarTipos();
   }, []);
+
+  // Preenche endereço e bairro via geocodificação reversa,
+  // sem sobrescrever o que o usuário digitar manualmente
+  useEffect(() => {
+    if (enderecoInicial || bairroInicial || latitude == null || longitude == null) return;
+
+    let ativo = true;
+
+    buscarEndereco(latitude, longitude).then((resultado) => {
+      if (!ativo || !resultado) return;
+      setEndereco((atual) => atual || resultado.endereco);
+      setBairro((atual) => atual || resultado.bairro);
+    });
+
+    return () => {
+      ativo = false;
+    };
+  }, [latitude, longitude, enderecoInicial, bairroInicial]);
 
   async function escolherImagem() {
     const permissao = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -58,16 +83,39 @@ export default function RegistrarDenuncia() {
 
     const resultado = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
-      quality: 0.7,
+      quality: 1,
     });
 
-    if (!resultado.canceled) {
-      setImagem(resultado.assets[0]);
+    if (resultado.canceled) return;
+
+    const original = resultado.assets[0];
+
+    try {
+      const acoes = original.width > 1280 ? [{ resize: { width: 1280 } }] : [];
+      const reduzida = await ImageManipulator.manipulateAsync(original.uri, acoes, {
+        compress: 0.7,
+        format: ImageManipulator.SaveFormat.JPEG,
+      });
+
+      setImagem({ uri: reduzida.uri, fileName: 'denuncia.jpg', mimeType: 'image/jpeg' });
+    } catch (erro) {
+      console.error('Erro ao reduzir imagem:', erro);
+      setImagem(original);
     }
   }
 
-  function removerImagem() {
-    setImagem(null);
+  async function enviarImagem(idDenuncia) {
+    const formData = new FormData();
+    formData.append('id_denuncia', String(idDenuncia));
+    formData.append('imagem', {
+      uri: imagem.uri,
+      name: imagem.fileName ?? 'denuncia.jpg',
+      type: imagem.mimeType ?? 'image/jpeg',
+    });
+
+    await api.post('/denuncias/upload_imagem.php', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
   }
 
   async function registrarDenuncia() {
@@ -76,12 +124,12 @@ export default function RegistrarDenuncia() {
       return;
     }
 
-    if (!endereco || !bairro || !idTipo) {
+    if (!endereco.trim() || !bairro.trim() || !idTipo) {
       Alert.alert('Atenção', 'Preencha ao menos o endereço, bairro e tipo do problema.');
       return;
     }
 
-    if (!latitude || !longitude) {
+    if (latitude == null || longitude == null) {
       Alert.alert('Atenção', 'Localização não definida. Volte e selecione um ponto no mapa.');
       return;
     }
@@ -92,41 +140,42 @@ export default function RegistrarDenuncia() {
       const usuarioSalvo = await AsyncStorage.getItem('usuario');
       const usuario = usuarioSalvo ? JSON.parse(usuarioSalvo) : null;
 
-      const respostaCriar = await api.post('/denuncias/criar.php', {
-        descricao: descricao || '',
-        endereco: `${endereco} - ${bairro}`,
+      const { data } = await api.post('/denuncias/criar.php', {
+        descricao: descricao.trim(),
+        endereco: endereco.trim(),
+        bairro: bairro.trim(),
+        cidade: 'Registro',
+        estado: 'SP',
         latitude,
         longitude,
         id_tipo: idTipo,
         id_usuario: usuario?.id_usuario ?? null,
       });
 
-      if (!respostaCriar.data.success) {
-        Alert.alert('Erro', respostaCriar.data.message || 'Não foi possível registrar a denúncia.');
+      if (!data.success) {
+        Alert.alert('Erro', data.message || 'Não foi possível registrar a denúncia.');
         return;
       }
 
-      const idDenuncia = respostaCriar.data.id_denuncia;
-
       if (imagem) {
-        const formData = new FormData();
-        formData.append('id_denuncia', idDenuncia);
-        formData.append('imagem', {
-          uri: imagem.uri,
-          name: 'denuncia.jpg',
-          type: 'image/jpeg',
-        });
-
-        await api.post('/denuncias/upload_imagem.php', formData, {
-          headers: { 'Content-Type': 'multipart/form-data' },
-        });
+        try {
+          await enviarImagem(data.id_denuncia);
+        } catch (erro) {
+          console.error('Erro no upload:', erro);
+          Alert.alert('Atenção', 'Denúncia registrada, mas a imagem não pôde ser enviada.');
+          navigation.navigate('Inicio');
+          return;
+        }
       }
 
       Alert.alert('Sucesso', 'Denúncia registrada com sucesso!');
       navigation.navigate('Inicio');
     } catch (erro) {
       console.error(erro);
-      Alert.alert('Erro', 'Não foi possível registrar a denúncia.');
+      Alert.alert(
+        'Erro',
+        erro.response?.data?.message ?? 'Não foi possível registrar a denúncia.'
+      );
     } finally {
       setEnviando(false);
     }
@@ -135,7 +184,7 @@ export default function RegistrarDenuncia() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity>
+        <TouchableOpacity onPress={() => setMenuAberto(true)}>
           <Ionicons name="menu" size={28} color="#333" />
         </TouchableOpacity>
 
@@ -153,24 +202,27 @@ export default function RegistrarDenuncia() {
         <Text style={styles.title}>Registro de Denúncia</Text>
 
         <Text style={styles.label}>Endereço</Text>
-        <TextInput style={styles.input} value={endereco} onChangeText={setEndereco} />
+        <TextInput style={styles.input} value={endereco} onChangeText={setEndereco} maxLength={255} />
 
         <Text style={styles.label}>Bairro</Text>
-        <TextInput style={styles.input} value={bairro} onChangeText={setBairro} />
+        <TextInput style={styles.input} value={bairro} onChangeText={setBairro} maxLength={100} />
 
         <Text style={styles.label}>Tipo de Problema</Text>
         <View style={styles.tiposArea}>
-          {tipos.map((tipo) => (
-            <TouchableOpacity
-              key={tipo.id_tipo}
-              style={[styles.tipoPill, idTipo === tipo.id_tipo && styles.tipoPillAtivo]}
-              onPress={() => setIdTipo(tipo.id_tipo)}
-            >
-              <Text style={[styles.tipoTexto, idTipo === tipo.id_tipo && styles.tipoTextoAtivo]}>
-                {tipo.nome}
-              </Text>
-            </TouchableOpacity>
-          ))}
+          {tipos.map((tipo) => {
+            const ativo = idTipo === tipo.id_tipo;
+            return (
+              <TouchableOpacity
+                key={tipo.id_tipo}
+                style={[styles.tipoPill, ativo && styles.tipoPillAtivo]}
+                onPress={() => setIdTipo(tipo.id_tipo)}
+              >
+                <Text style={[styles.tipoTexto, ativo && styles.tipoTextoAtivo]}>
+                  {tipo.nome}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
         </View>
 
         <Text style={styles.label}>Descrição do problema (opcional)</Text>
@@ -180,6 +232,7 @@ export default function RegistrarDenuncia() {
           onChangeText={setDescricao}
           multiline
           numberOfLines={5}
+          maxLength={500}
           placeholder="Descreva o problema, se quiser adicionar mais detalhes..."
         />
 
@@ -194,7 +247,7 @@ export default function RegistrarDenuncia() {
         {imagem && (
           <View style={styles.previewArea}>
             <Image source={{ uri: imagem.uri }} style={styles.previewImage} />
-            <TouchableOpacity style={styles.previewRemove} onPress={removerImagem}>
+            <TouchableOpacity style={styles.previewRemove} onPress={() => setImagem(null)}>
               <Ionicons name="close-circle" size={26} color="#ff4b4b" />
             </TouchableOpacity>
           </View>
@@ -213,6 +266,12 @@ export default function RegistrarDenuncia() {
           </LinearGradient>
         </TouchableOpacity>
       </ScrollView>
+
+      <MenuLateral
+        visible={menuAberto}
+        onClose={() => setMenuAberto(false)}
+        ativo="registrar"
+      />
     </SafeAreaView>
   );
 }
