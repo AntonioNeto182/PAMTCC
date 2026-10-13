@@ -27,8 +27,8 @@ try {
             l.endereco,
             l.numero,
             l.bairro,
-            ST_X(l.localizacao) AS latitude,
-            ST_Y(l.localizacao) AS longitude,
+            ST_Y(l.localizacao) AS latitude,
+            ST_X(l.localizacao) AS longitude,
             (SELECT caminho FROM imagens
               WHERE id_denuncia = d.id_denuncia
               ORDER BY ordem, id_imagem LIMIT 1) AS imagem

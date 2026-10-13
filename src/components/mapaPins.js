@@ -2,6 +2,12 @@
 
 export const PINS_CSS = `
   .popup-denuncia { max-width: 220px; font-family: sans-serif; }
+  .popup-denuncia .status-linha { margin: 0 0 6px; }
+  .popup-denuncia .status {
+    display: inline-block; padding: 2px 8px; border-radius: 10px;
+    font-size: 10px; font-weight: bold; color: #fff;
+    text-transform: capitalize; letter-spacing: 0.3px;
+  }
   .popup-denuncia .autor { font-size: 11px; color: #888; margin: 0 0 2px; }
   .popup-denuncia .tipo { font-weight: bold; font-size: 14px; margin: 0 0 4px; }
   .popup-denuncia .descricao { font-size: 12px; color: #444; margin: 0 0 6px; max-height: 60px; overflow-y: auto; }
@@ -13,6 +19,7 @@ export const PINS_CSS = `
   .popup-denuncia .up { background: #eee; color: #444; min-width: 64px; }
   .popup-denuncia .up.ativo { background: #ff7b39; color: #fff; }
   .popup-denuncia .det { flex: 1; background: #ff4b4b; color: #fff; }
+  .popup-denuncia .mod { flex: 1; background: #8e44ad; color: #fff; }
   .popup-denuncia button:disabled { opacity: 0.5; }
   .pin { position: relative; }
   .pin .badge {
@@ -28,6 +35,11 @@ export const PINS_JS = `
     '#ff4b4b', '#ff9f1a', '#1a73e8', '#8e44ad',
     '#16a085', '#e91e63', '#795548', '#607d8b'
   ];
+
+  // Cores fixas por status terminal (sobrepõem a cor do tipo)
+  const COR_RESOLVIDA = '#27ae60';
+  const COR_REJEITADA = '#c0392b';
+
   const registro = new Map();
 
   function avisar(mensagem) {
@@ -47,6 +59,13 @@ export const PINS_JS = `
       hash = tipo.charCodeAt(i) + ((hash << 5) - hash);
     }
     return PALETA_CORES[Math.abs(hash) % PALETA_CORES.length];
+  }
+
+  // Cor do pin: status terminal tem prioridade; senão, cor do tipo.
+  function corDoPin(d) {
+    if (d.status === 'resolvida') return COR_RESOLVIDA;
+    if (d.status === 'rejeitada') return COR_REJEITADA;
+    return corPorTipo(d.tipo);
   }
 
   function tamanhoPorZoom(zoom) {
@@ -87,6 +106,15 @@ export const PINS_JS = `
   function montarPopup(d) {
     const div = elemento('div', 'popup-denuncia');
 
+    // Status no topo do popup
+    if (d.status) {
+      const linha = elemento('p', 'status-linha');
+      const s = elemento('span', 'status', String(d.status).replace(/_/g, ' '));
+      s.style.backgroundColor = d.status_cor || '#666';
+      linha.appendChild(s);
+      div.appendChild(linha);
+    }
+
     div.appendChild(elemento('p', 'autor', 'Por ' + (d.autor || 'Anônimo')));
 
     const tipo = elemento('p', 'tipo', d.tipo || 'Sem tipo');
@@ -105,24 +133,37 @@ export const PINS_JS = `
 
     const acoes = elemento('div', 'acoes');
 
-    const up = elemento('button', 'up' + (d.votou ? ' ativo' : ''), '▲ ' + (d.votos || 0));
-    up.onclick = function () {
-      up.disabled = true;
-      avisar({ tipo: 'votar', id_denuncia: d.id_denuncia });
-    };
-    acoes.appendChild(up);
+    if (d.status !== 'resolvida' && d.status !== 'rejeitada') {
+      const up = elemento('button', 'up' + (d.votou ? ' ativo' : ''), '▲ ' + (d.votos || 0));
+      up.onclick = function () {
+        up.disabled = true;
+        avisar({ tipo: 'votar', id_denuncia: d.id_denuncia });
+      };
+      acoes.appendChild(up);
+    } else {
+      // Denúncia encerrada: mostra só a contagem, sem botão
+      const contagem = elemento('button', 'up', '▲ ' + (d.votos || 0));
+      contagem.disabled = true;
+      acoes.appendChild(contagem);
+    }
 
-    const det = elemento('button', 'det',
-      d.atualizacoes > 0 ? 'Atualizações (' + d.atualizacoes + ')' : 'Atualizar');
-    det.onclick = function () { avisar({ tipo: 'detalhes', id_denuncia: d.id_denuncia }); };
-    acoes.appendChild(det);
+    if (CFG.podeModerar) {
+      const mod = elemento('button', 'mod', 'Moderar');
+      mod.onclick = function () { avisar({ tipo: 'moderar', id_denuncia: d.id_denuncia }); };
+      acoes.appendChild(mod);
+    } else {
+      const det = elemento('button', 'det',
+        d.atualizacoes > 0 ? 'Expandir (' + d.atualizacoes + ')' : 'Expandir');
+      det.onclick = function () { avisar({ tipo: 'detalhes', id_denuncia: d.id_denuncia }); };
+      acoes.appendChild(det);
+    }
 
     div.appendChild(acoes);
     return div;
   }
 
   function criarMarcador(d, tamanho) {
-    const cor = corPorTipo(d.tipo);
+    const cor = corDoPin(d);
     const marcador = L.marker([d.latitude, d.longitude], {
       icon: criarIcone(tamanho, cor, d.votos),
     });
@@ -144,6 +185,7 @@ export const PINS_JS = `
     if (!m) return;
 
     Object.assign(m.denuncia, patch);
+    m.corTipo = corDoPin(m.denuncia);
     reiconarMarcador(m, tamanhoPorZoom(map.getZoom()));
     m.setPopupContent(montarPopup(m.denuncia));
   }

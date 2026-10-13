@@ -1,93 +1,86 @@
 <?php
 include('../config/cors.php');
 include('../config/database.php');
+include('../config/auth.php');
+include('../config/util.php');
 
-function responder(int $status, array $corpo): never
-{
-    http_response_code($status);
-    echo json_encode($corpo);
-    exit;
+exigirMetodo('POST');
+
+$eu         = exigirPermissao($conn, 'interacao.criar');
+$dados      = entrada();
+$idDenuncia = inteiroPositivo($dados['id_denuncia'] ?? null) ?? falhar(400, 'Dados incompletos');
+$acao       = (string) ($dados['acao'] ?? 'salvar');
+
+$denuncia = consulta(
+    $conn,
+    'SELECT d.id_usuario, sd.nome AS status
+       FROM denuncias d
+       INNER JOIN status_denuncia sd ON sd.id_status = d.id_status
+      WHERE d.id_denuncia = ?',
+    [$idDenuncia]
+)[0] ?? falhar(404, 'Denúncia não encontrada');
+
+if ((int) $denuncia['id_usuario'] === $eu['id_usuario']) {
+    falhar(403, 'O autor não pode corroborar a própria denúncia');
 }
 
-$dados = json_decode(file_get_contents('php://input'), true);
-$dados = is_array($dados) ? $dados : [];
-
-$idLocal   = filter_var($dados['id_local'] ?? null, FILTER_VALIDATE_INT);
-$idUsuario = filter_var($dados['id_usuario'] ?? null, FILTER_VALIDATE_INT);
-
-if (!$idLocal || !$idUsuario) {
-    responder(400, ['success' => false, 'message' => 'Dados incompletos']);
+if ($acao !== 'remover' && in_array($denuncia['status'], ['resolvida', 'rejeitada'], true)) {
+    falhar(409, 'Esta denúncia está encerrada e não aceita novas corroborações.');
 }
 
-$idStatus = 1; // pendente
+$atual = consulta(
+    $conn,
+    'SELECT id_corroboracao, imagem FROM corroboracoes WHERE id_denuncia = ? AND id_usuario = ?',
+    [$idDenuncia, $eu['id_usuario']]
+)[0] ?? null;
 
-try {
-    $conn->begin_transaction();
+if ($acao === 'remover') {
+    if ($atual) {
+        executar($conn, 'DELETE FROM corroboracoes WHERE id_corroboracao = ?', [(int) $atual['id_corroboracao']]);
+        removerImagem($atual['imagem']);
+    }
+    $votou = false;
+} else {
+    $descricao = textoOpcional($dados['descricao'] ?? null, 500, 'Descrição');
+    $nova      = salvarImagem($_FILES['imagem'] ?? null, 'corroboracoes');
 
-    $stmtUsr = $conn->prepare('SELECT 1 FROM usuarios WHERE id_usuario = ? AND ativo = 1');
-    $stmtUsr->bind_param('i', $idUsuario);
-    $stmtUsr->execute();
-    if ($stmtUsr->get_result()->num_rows === 0) {
-        $conn->rollback();
-        responder(404, ['success' => false, 'message' => 'Usuário não encontrado']);
+    if ($descricao === null && $nova === null && !$atual) {
+        falhar(400, 'Informe uma descrição ou uma imagem');
     }
 
-    // FOR UPDATE serializa corroborações simultâneas e evita duplicidade
-    $stmt = $conn->prepare(
-        "SELECT d.id_denuncia, d.id_tipo, d.prioridade, d.id_usuario
-         FROM denuncias d
-         INNER JOIN status_denuncia sd ON sd.id_status = d.id_status
-         WHERE d.id_local = ? AND sd.nome NOT IN ('resolvida', 'rejeitada')
-         ORDER BY d.id_denuncia ASC
-         FOR UPDATE"
-    );
-    $stmt->bind_param('i', $idLocal);
-    $stmt->execute();
-    $abertas = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
-
-    if (!$abertas) {
-        $conn->rollback();
-        responder(409, ['success' => false, 'message' => 'Esta denúncia já foi encerrada']);
-    }
-
-    foreach ($abertas as $linha) {
-        if ((int) $linha['id_usuario'] === $idUsuario) {
-            $conn->rollback();
-            responder(409, ['success' => false, 'message' => 'Você já registrou ou corroborou esta denúncia']);
+    try {
+        if ($atual) {
+            // Conteúdo novo precisa ser validado de novo por um agente
+            executar(
+                $conn,
+                'UPDATE corroboracoes
+                 SET descricao = COALESCE(?, descricao),
+                     imagem = COALESCE(?, imagem),
+                     id_validador = NULL, validada_em = NULL
+                 WHERE id_corroboracao = ?',
+                [$descricao, $nova, (int) $atual['id_corroboracao']]
+            );
+            if ($nova !== null) {
+                removerImagem($atual['imagem']);
+            }
+        } else {
+            executar(
+                $conn,
+                'INSERT INTO corroboracoes (id_denuncia, id_usuario, descricao, imagem) VALUES (?, ?, ?, ?)',
+                [$idDenuncia, $eu['id_usuario'], $descricao, $nova]
+            );
         }
+    } catch (Throwable $e) {
+        removerImagem($nova);
+        throw $e;
     }
-
-    $base       = $abertas[0];
-    $idBase     = (int) $base['id_denuncia'];
-    $idTipo     = (int) $base['id_tipo'];
-    $prioridade = (int) $base['prioridade'];
-    $descricao  = "Corroboração da denúncia #$idBase";
-
-    $stmtIns = $conn->prepare(
-        'INSERT INTO denuncias (descricao, id_status, id_usuario, id_local, id_tipo, prioridade, data_ocorrencia)
-         VALUES (?, ?, ?, ?, ?, ?, NOW())'
-    );
-    $stmtIns->bind_param('siiiii', $descricao, $idStatus, $idUsuario, $idLocal, $idTipo, $prioridade);
-    $stmtIns->execute();
-    $idNova = $conn->insert_id;
-
-    $stmtHist = $conn->prepare(
-        "INSERT INTO historico_status (id_denuncia, id_usuario, id_status_anterior, id_status_novo, observacao)
-         VALUES (?, ?, NULL, ?, 'Corroboração registrada')"
-    );
-    $stmtHist->bind_param('iii', $idNova, $idUsuario, $idStatus);
-    $stmtHist->execute();
-
-    $conn->commit();
-
-    echo json_encode([
-        'success'       => true,
-        'message'       => 'Corroboração registrada',
-        'id_denuncia'   => $idNova,
-        'corroboracoes' => count($abertas), // as já existentes (a base conta como a original)
-    ]);
-} catch (mysqli_sql_exception $e) {
-    $conn->rollback();
-    error_log($e->getMessage());
-    responder(500, ['success' => false, 'message' => 'Erro ao registrar corroboração']);
+    $votou = true;
 }
+
+$resumo = consulta(
+    $conn,
+    'SELECT COUNT(*) AS votos FROM corroboracoes WHERE id_denuncia = ? AND oculta = 0',
+    [$idDenuncia]
+)[0];
+
+echo json_encode(['success' => true, 'votos' => (int) $resumo['votos'], 'votou' => $votou]);

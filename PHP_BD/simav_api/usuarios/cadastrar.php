@@ -1,45 +1,49 @@
 <?php
 include('../config/cors.php');
 include('../config/database.php');
+include('../config/auth.php');
+include('../config/util.php');
 
-function responder(int $status, array $corpo): never
-{
-    http_response_code($status);
-    echo json_encode($corpo);
-    exit;
+const MAX_CADASTROS_IP = 10;
+
+exigirMetodo('POST');
+
+$dados = corpoJson();
+$ip    = 'cadastro:' . ($_SERVER['REMOTE_ADDR'] ?? '');
+
+if (falhasRecentes($ip) >= MAX_CADASTROS_IP) {
+    falhar(429, 'Muitas tentativas. Aguarde alguns minutos.');
+}
+registrarFalha($ip);
+
+$nome  = textoObrigatorio($dados['nome'] ?? null, 100, 'Nome');
+$email = strtolower(trim((string) ($dados['email'] ?? '')));
+$senha = (string) ($dados['senha'] ?? '');
+
+if (strlen($email) > 150 || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+    falhar(400, 'E-mail inválido');
+}
+if (strlen($senha) < 6 || strlen($senha) > 72) {
+    falhar(400, 'Senha deve ter entre 6 e 72 caracteres');
 }
 
-$dados = json_decode(file_get_contents('php://input'), true);
-
-$nome  = is_array($dados) ? trim((string) ($dados['nome'] ?? '')) : '';
-$email = is_array($dados) ? strtolower(trim((string) ($dados['email'] ?? ''))) : '';
-$senha = is_array($dados) ? (string) ($dados['senha'] ?? '') : '';
-
-if ($nome === '' || $email === '' || $senha === '') {
-    responder(400, ['success' => false, 'message' => 'Dados incompletos']);
-}
-if (mb_strlen($nome) > 100 || strlen($email) > 150 || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
-    responder(400, ['success' => false, 'message' => 'Nome ou e-mail inválido']);
-}
-if (strlen($senha) < 6 || strlen($senha) > 72) { // limite do bcrypt
-    responder(400, ['success' => false, 'message' => 'Senha deve ter entre 6 e 72 caracteres']);
-}
-
-$senhaHash = password_hash($senha, PASSWORD_DEFAULT);
-$idPapel   = 1; // cidadao
+$cpf        = normalizarCpf($dados['cpf'] ?? null);
+$nascimento = normalizarNascimento($dados['data_nascimento'] ?? null);
+$telefone   = normalizarTelefone($dados['telefone'] ?? null);
 
 try {
-    $stmt = $conn->prepare(
-        'INSERT INTO usuarios (nome, email, senha_hash, id_papel) VALUES (?, ?, ?, ?)'
+    executar(
+        $conn,
+        'INSERT INTO usuarios (nome, email, senha_hash, cpf, data_nascimento, telefone, id_papel)
+         VALUES (?, ?, ?, ?, ?, ?, 1)',
+        [$nome, $email, password_hash($senha, PASSWORD_DEFAULT), $cpf, $nascimento, $telefone]
     );
-    $stmt->bind_param('sssi', $nome, $email, $senhaHash, $idPapel);
-    $stmt->execute();
-
-    echo json_encode(['success' => true, 'message' => 'Usuário cadastrado']);
 } catch (mysqli_sql_exception $e) {
     if ($e->getCode() === 1062) {
-        responder(409, ['success' => false, 'message' => 'E-mail já cadastrado']);
+        falhar(409, str_contains($e->getMessage(), 'cpf') ? 'CPF já cadastrado' : 'E-mail já cadastrado');
     }
-    error_log($e->getMessage());
-    responder(500, ['success' => false, 'message' => 'Erro ao cadastrar']);
+    throw $e;
 }
+
+http_response_code(201);
+echo json_encode(['success' => true, 'message' => 'Usuário cadastrado com sucesso', 'id_usuario' => $conn->insert_id]);

@@ -99,6 +99,11 @@ export const styles = StyleSheet.create({
     color: '#222',
     textAlignVertical: 'top',
   },
+  folhaComTeclado: {
+    height: undefined,
+    flex: 1,
+    marginTop: 40,
+  },
   anexar: {
     flexDirection: 'row',
     alignItems: 'center',

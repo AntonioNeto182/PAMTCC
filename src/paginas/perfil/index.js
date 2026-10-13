@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useState } from "react";
 import {
   View,
   Text,
@@ -8,39 +8,51 @@ import {
   ScrollView,
   Alert,
   ActivityIndicator,
-} from 'react-native';
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
-import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
-import * as ImagePicker from 'expo-image-picker';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useFocusEffect, useNavigation } from "@react-navigation/native";
+import { Ionicons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
+import * as ImagePicker from "expo-image-picker";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { voltarSeguro } from '../../utils/navegacao';
 
-import api from '../../services/api';
-import { styles } from './styles';
-import Logo from '../../../assets/icons/logo.png';
 
-const CORES_DESTAQUE = ['#ff4b4b', '#ff7b39', '#1a73e8', '#8e44ad', '#16a085', '#e91e63'];
+import api from "../../services/api";
+import { salvarToken } from "../../services/sessao";
+import { styles } from "./styles";
+import Logo from '../../components/Logo';
+
+const CORES_DESTAQUE = [
+  "#ff4b4b",
+  "#ff7b39",
+  "#1a73e8",
+  "#8e44ad",
+  "#16a085",
+  "#e91e63",
+];
 const COR_PADRAO = CORES_DESTAQUE[0];
 const chaveCor = (id) => `perfil_cor:${id}`;
 
 const FILTROS = [
-  { chave: 'todas', rotulo: 'Todas' },
-  { chave: 'abertas', rotulo: 'Em aberto' },
-  { chave: 'resolvidas', rotulo: 'Resolvidas' },
+  { chave: "todas", rotulo: "Todas" },
+  { chave: "abertas", rotulo: "Em aberto" },
+  { chave: "resolvidas", rotulo: "Resolvidas" },
 ];
-const STATUS_FECHADOS = ['resolvida', 'rejeitada'];
+const STATUS_FECHADOS = ["resolvida", "rejeitada"];
 const LIMITE_INICIAL = 4;
 
 function formatarData(valor) {
-  if (!valor) return '—';
-  const data = new Date(String(valor).replace(' ', 'T'));
-  return Number.isNaN(data.getTime()) ? '—' : data.toLocaleDateString('pt-BR');
+  if (!valor) return "—";
+  const data = new Date(String(valor).replace(" ", "T"));
+  return Number.isNaN(data.getTime()) ? "—" : data.toLocaleDateString("pt-BR");
 }
 
 function filtrarDenuncias(denuncias, filtro) {
-  if (filtro === 'abertas') return denuncias.filter((d) => !STATUS_FECHADOS.includes(d.status));
-  if (filtro === 'resolvidas') return denuncias.filter((d) => d.status === 'resolvida');
+  if (filtro === "abertas")
+    return denuncias.filter((d) => !STATUS_FECHADOS.includes(d.status));
+  if (filtro === "resolvidas")
+    return denuncias.filter((d) => d.status === "resolvida");
   return denuncias;
 }
 
@@ -48,10 +60,14 @@ function CardDenuncia({ item, cor, onPress }) {
   const uri = item.imagem
     ? `${api.defaults.baseURL}/uploads/${encodeURIComponent(item.imagem)}`
     : null;
-  const endereco = [item.endereco, item.bairro].filter(Boolean).join(' — ');
+  const endereco = [item.endereco, item.bairro].filter(Boolean).join(" — ");
 
   return (
-    <TouchableOpacity style={styles.denunciaCard} onPress={() => onPress(item)} activeOpacity={0.85}>
+    <TouchableOpacity
+      style={styles.denunciaCard}
+      onPress={() => onPress(item)}
+      activeOpacity={0.85}
+    >
       {uri ? (
         <Image source={{ uri }} style={styles.denunciaImagem} />
       ) : (
@@ -62,23 +78,36 @@ function CardDenuncia({ item, cor, onPress }) {
 
       <View style={styles.denunciaInfo}>
         <View style={styles.denunciaTopo}>
-          <Text style={styles.denunciaTipo} numberOfLines={1}>{item.tipo}</Text>
-          <View style={[styles.statusBadge, { backgroundColor: item.status_cor ?? '#999' }]}>
-            <Text style={styles.statusTexto}>{item.status.replace(/_/g, ' ')}</Text>
+          <Text style={styles.denunciaTipo} numberOfLines={1}>
+            {item.tipo}
+          </Text>
+          <View
+            style={[
+              styles.statusBadge,
+              { backgroundColor: item.status_cor ?? "#999" },
+            ]}
+          >
+            <Text style={styles.statusTexto}>
+              {item.status.replace(/_/g, " ")}
+            </Text>
           </View>
         </View>
 
         <Text style={styles.denunciaDescricao} numberOfLines={2}>
-          {item.descricao || 'Sem descrição informada'}
+          {item.descricao || "Sem descrição informada"}
         </Text>
 
         <View style={styles.denunciaLinha}>
           <Ionicons name="location-outline" size={14} color="#888" />
-          <Text style={styles.denunciaEndereco} numberOfLines={1}>{endereco}</Text>
+          <Text style={styles.denunciaEndereco} numberOfLines={1}>
+            {endereco}
+          </Text>
         </View>
 
         <View style={styles.denunciaRodape}>
-          <Text style={styles.denunciaData}>{formatarData(item.data_denuncia)}</Text>
+          <Text style={styles.denunciaData}>
+            {formatarData(item.data_denuncia)}
+          </Text>
           <Text style={[styles.verNoMapa, { color: cor }]}>Ver no mapa ›</Text>
         </View>
       </View>
@@ -92,7 +121,7 @@ export default function Perfil() {
   const [perfil, setPerfil] = useState(null);
   const [stats, setStats] = useState({ total: 0, em_aberto: 0, resolvidas: 0 });
   const [denuncias, setDenuncias] = useState([]);
-  const [filtro, setFiltro] = useState('todas');
+  const [filtro, setFiltro] = useState("todas");
   const [mostrarTodas, setMostrarTodas] = useState(false);
   const [cor, setCor] = useState(COR_PADRAO);
   const [carregando, setCarregando] = useState(true);
@@ -100,18 +129,18 @@ export default function Perfil() {
   const [enviandoFoto, setEnviandoFoto] = useState(false);
 
   const [editando, setEditando] = useState(false);
-  const [nome, setNome] = useState('');
-  const [email, setEmail] = useState('');
-  const [senhaAtual, setSenhaAtual] = useState('');
-  const [novaSenha, setNovaSenha] = useState('');
+  const [nome, setNome] = useState("");
+  const [email, setEmail] = useState("");
+  const [senhaAtual, setSenhaAtual] = useState("");
+  const [novaSenha, setNovaSenha] = useState("");
 
   const irParaLogin = useCallback(() => {
-    navigation.reset({ index: 0, routes: [{ name: 'Login' }] });
+    navigation.reset({ index: 0, routes: [{ name: "Login" }] });
   }, [navigation]);
 
   const carregar = useCallback(async () => {
     try {
-      const salvo = await AsyncStorage.getItem('usuario');
+      const salvo = await AsyncStorage.getItem("usuario");
       const local = salvo ? JSON.parse(salvo) : null;
 
       if (!local?.id_usuario) {
@@ -122,7 +151,7 @@ export default function Perfil() {
       const corSalva = await AsyncStorage.getItem(chaveCor(local.id_usuario));
       if (corSalva) setCor(corSalva);
 
-      const { data } = await api.get('/usuarios/perfil.php', {
+      const { data } = await api.get("/usuarios/perfil.php", {
         params: { id: local.id_usuario },
       });
 
@@ -133,18 +162,18 @@ export default function Perfil() {
 
       // Falha na lista não deve derrubar o perfil
       try {
-        const resposta = await api.get('/denuncias/listar_usuario.php', {
+        const resposta = await api.get("/denuncias/listar_usuario.php", {
           params: { id_usuario: local.id_usuario },
         });
         setDenuncias(resposta.data);
       } catch (erro) {
-        console.error('Erro ao carregar denúncias do usuário:', erro);
+        console.error("Erro ao carregar denúncias do usuário:", erro);
       }
     } catch (erro) {
-      console.error('Erro ao carregar perfil:', erro);
+      console.error("Erro ao carregar perfil:", erro);
       Alert.alert(
-        'Erro',
-        erro.response?.data?.message ?? 'Não foi possível carregar o perfil.'
+        "Erro",
+        erro.response?.data?.message ?? "Não foi possível carregar o perfil.",
       );
     } finally {
       setCarregando(false);
@@ -154,13 +183,16 @@ export default function Perfil() {
   useFocusEffect(
     useCallback(() => {
       carregar();
-    }, [carregar])
+    }, [carregar]),
   );
 
   async function sincronizarUsuarioLocal(novosDados) {
-    const salvo = await AsyncStorage.getItem('usuario');
+    const salvo = await AsyncStorage.getItem("usuario");
     const atual = salvo ? JSON.parse(salvo) : {};
-    await AsyncStorage.setItem('usuario', JSON.stringify({ ...atual, ...novosDados }));
+    await AsyncStorage.setItem(
+      "usuario",
+      JSON.stringify({ ...atual, ...novosDados }),
+    );
   }
 
   async function escolherCor(nova) {
@@ -178,20 +210,24 @@ export default function Perfil() {
       },
     };
 
-    if (typeof navigation.popTo === 'function') navigation.popTo('Inicio', params);
-    else navigation.navigate('Inicio', params);
+    if (typeof navigation.popTo === "function")
+      navigation.popTo("Inicio", params);
+    else navigation.navigate("Inicio", params);
   }
 
   async function trocarFoto() {
     const permissao = await ImagePicker.requestMediaLibraryPermissionsAsync();
 
     if (!permissao.granted) {
-      Alert.alert('Permissão necessária', 'Autorize o acesso às fotos para alterar sua foto.');
+      Alert.alert(
+        "Permissão necessária",
+        "Autorize o acesso às fotos para alterar sua foto.",
+      );
       return;
     }
 
     const resultado = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
+      mediaTypes: ["images"],
       allowsEditing: true,
       aspect: [1, 1],
       quality: 0.7,
@@ -204,24 +240,24 @@ export default function Perfil() {
 
     try {
       const formData = new FormData();
-      formData.append('id_usuario', String(perfil.id_usuario));
-      formData.append('foto', {
+      formData.append("id_usuario", String(perfil.id_usuario));
+      formData.append("foto", {
         uri: imagem.uri,
-        name: imagem.fileName ?? 'perfil.jpg',
-        type: imagem.mimeType ?? 'image/jpeg',
+        name: imagem.fileName ?? "perfil.jpg",
+        type: imagem.mimeType ?? "image/jpeg",
       });
 
-      const { data } = await api.post('/usuarios/foto.php', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
+      const { data } = await api.post("/usuarios/foto.php", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
       });
 
       setPerfil((atual) => ({ ...atual, foto_perfil: data.foto_perfil }));
       await sincronizarUsuarioLocal({ foto_perfil: data.foto_perfil });
     } catch (erro) {
-      console.error('Erro ao enviar foto:', erro);
+      console.error("Erro ao enviar foto:", erro);
       Alert.alert(
-        'Erro',
-        erro.response?.data?.message ?? 'Não foi possível enviar a foto.'
+        "Erro",
+        erro.response?.data?.message ?? "Não foi possível enviar a foto.",
       );
     } finally {
       setEnviandoFoto(false);
@@ -231,8 +267,8 @@ export default function Perfil() {
   function cancelarEdicao() {
     setNome(perfil.nome);
     setEmail(perfil.email);
-    setSenhaAtual('');
-    setNovaSenha('');
+    setSenhaAtual("");
+    setNovaSenha("");
     setEditando(false);
   }
 
@@ -241,24 +277,27 @@ export default function Perfil() {
     const emailMudou = emailLimpo !== perfil.email;
 
     if (!nome.trim() || !emailLimpo) {
-      Alert.alert('Atenção', 'Nome e e-mail são obrigatórios.');
+      Alert.alert("Atenção", "Nome e e-mail são obrigatórios.");
       return;
     }
 
     if (novaSenha && novaSenha.length < 6) {
-      Alert.alert('Atenção', 'A nova senha deve ter no mínimo 6 caracteres.');
+      Alert.alert("Atenção", "A nova senha deve ter no mínimo 6 caracteres.");
       return;
     }
 
     if ((emailMudou || novaSenha) && !senhaAtual) {
-      Alert.alert('Atenção', 'Informe sua senha atual para alterar e-mail ou senha.');
+      Alert.alert(
+        "Atenção",
+        "Informe sua senha atual para alterar e-mail ou senha.",
+      );
       return;
     }
 
     setSalvando(true);
 
     try {
-      const { data } = await api.post('/usuarios/atualizar.php', {
+      const { data } = await api.post("/usuarios/atualizar.php", {
         id_usuario: perfil.id_usuario,
         nome: nome.trim(),
         email: emailLimpo,
@@ -266,17 +305,24 @@ export default function Perfil() {
         nova_senha: novaSenha,
       });
 
-      setPerfil((atual) => ({ ...atual, nome: data.usuario.nome, email: data.usuario.email }));
+      // Trocar a senha invalida os tokens antigos: guarda o novo token do aparelho
+      if (data.token) await salvarToken(data.token);
+
+      setPerfil((atual) => ({
+        ...atual,
+        nome: data.usuario.nome,
+        email: data.usuario.email,
+      }));
       await sincronizarUsuarioLocal(data.usuario);
 
-      setSenhaAtual('');
-      setNovaSenha('');
+      setSenhaAtual("");
+      setNovaSenha("");
       setEditando(false);
-      Alert.alert('Sucesso', 'Perfil atualizado com sucesso!');
+      Alert.alert("Sucesso", "Perfil atualizado com sucesso!");
     } catch (erro) {
       Alert.alert(
-        'Erro',
-        erro.response?.data?.message ?? 'Não foi possível atualizar o perfil.'
+        "Erro",
+        erro.response?.data?.message ?? "Não foi possível atualizar o perfil.",
       );
     } finally {
       setSalvando(false);
@@ -284,13 +330,13 @@ export default function Perfil() {
   }
 
   function sair() {
-    Alert.alert('Sair', 'Deseja encerrar a sessão?', [
-      { text: 'Cancelar', style: 'cancel' },
+    Alert.alert("Sair", "Deseja encerrar a sessão?", [
+      { text: "Cancelar", style: "cancel" },
       {
-        text: 'Sair',
-        style: 'destructive',
+        text: "Sair",
+        style: "destructive",
         onPress: async () => {
-          await AsyncStorage.removeItem('usuario');
+          await AsyncStorage.removeItem("usuario");
           irParaLogin();
         },
       },
@@ -302,17 +348,19 @@ export default function Perfil() {
     : null;
 
   const filtradas = filtrarDenuncias(denuncias, filtro);
-  const visiveis = mostrarTodas ? filtradas : filtradas.slice(0, LIMITE_INICIAL);
+  const visiveis = mostrarTodas
+    ? filtradas
+    : filtradas.slice(0, LIMITE_INICIAL);
 
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
+        <TouchableOpacity onPress={() => voltarSeguro(navigation)} hitSlop={12}>
           <Ionicons name="arrow-back" size={26} color="#333" />
         </TouchableOpacity>
 
         <View style={styles.headerLogo}>
-          <Image source={Logo} style={styles.headerLogoImage} />
+          <Logo style={styles.headerLogoImage} />
           <Text style={styles.headerLogoText}>SIMAV</Text>
         </View>
 
@@ -320,17 +368,31 @@ export default function Perfil() {
       </View>
 
       {carregando && !perfil ? (
-        <ActivityIndicator style={styles.loading} size="large" color="#ff4b4b" />
+        <ActivityIndicator
+          style={styles.loading}
+          size="large"
+          color="#ff4b4b"
+        />
       ) : (
         perfil && (
-          <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+          <ScrollView
+            contentContainerStyle={styles.content}
+            keyboardShouldPersistTaps="handled"
+          >
             <View style={[styles.banner, { backgroundColor: cor }]} />
 
             <View style={styles.avatarArea}>
-              <TouchableOpacity onPress={trocarFoto} disabled={enviandoFoto} activeOpacity={0.8}>
+              <TouchableOpacity
+                onPress={trocarFoto}
+                disabled={enviandoFoto}
+                activeOpacity={0.8}
+              >
                 <View style={[styles.avatar, { borderColor: cor }]}>
                   {fotoUri ? (
-                    <Image source={{ uri: fotoUri }} style={styles.avatarImage} />
+                    <Image
+                      source={{ uri: fotoUri }}
+                      style={styles.avatarImage}
+                    />
                   ) : (
                     <Ionicons name="person" size={52} color="#bbb" />
                   )}
@@ -355,15 +417,21 @@ export default function Perfil() {
 
             <View style={styles.statsArea}>
               <View style={styles.statCard}>
-                <Text style={[styles.statNumero, { color: cor }]}>{stats.total}</Text>
+                <Text style={[styles.statNumero, { color: cor }]}>
+                  {stats.total}
+                </Text>
                 <Text style={styles.statLabel}>Denúncias</Text>
               </View>
               <View style={styles.statCard}>
-                <Text style={[styles.statNumero, { color: cor }]}>{stats.em_aberto}</Text>
+                <Text style={[styles.statNumero, { color: cor }]}>
+                  {stats.em_aberto}
+                </Text>
                 <Text style={styles.statLabel}>Em aberto</Text>
               </View>
               <View style={styles.statCard}>
-                <Text style={[styles.statNumero, { color: cor }]}>{stats.resolvidas}</Text>
+                <Text style={[styles.statNumero, { color: cor }]}>
+                  {stats.resolvidas}
+                </Text>
                 <Text style={styles.statLabel}>Resolvidas</Text>
               </View>
             </View>
@@ -378,13 +446,21 @@ export default function Perfil() {
                 return (
                   <TouchableOpacity
                     key={f.chave}
-                    style={[styles.filtroPill, ativo && { backgroundColor: cor, borderColor: cor }]}
+                    style={[
+                      styles.filtroPill,
+                      ativo && { backgroundColor: cor, borderColor: cor },
+                    ]}
                     onPress={() => {
                       setFiltro(f.chave);
                       setMostrarTodas(false);
                     }}
                   >
-                    <Text style={[styles.filtroTexto, ativo && styles.filtroTextoAtivo]}>
+                    <Text
+                      style={[
+                        styles.filtroTexto,
+                        ativo && styles.filtroTextoAtivo,
+                      ]}
+                    >
                       {f.rotulo}
                     </Text>
                   </TouchableOpacity>
@@ -397,8 +473,8 @@ export default function Perfil() {
                 <Ionicons name="document-text-outline" size={40} color="#ccc" />
                 <Text style={styles.vazioTexto}>
                   {denuncias.length === 0
-                    ? 'Você ainda não registrou denúncias.'
-                    : 'Nenhuma denúncia neste filtro.'}
+                    ? "Você ainda não registrou denúncias."
+                    : "Nenhuma denúncia neste filtro."}
                 </Text>
               </View>
             ) : (
@@ -415,7 +491,9 @@ export default function Perfil() {
             {filtradas.length > LIMITE_INICIAL && (
               <TouchableOpacity onPress={() => setMostrarTodas((v) => !v)}>
                 <Text style={[styles.verMais, { color: cor }]}>
-                  {mostrarTodas ? 'Ver menos' : `Ver todas (${filtradas.length})`}
+                  {mostrarTodas
+                    ? "Ver menos"
+                    : `Ver todas (${filtradas.length})`}
                 </Text>
               </TouchableOpacity>
             )}
@@ -427,10 +505,16 @@ export default function Perfil() {
                 {CORES_DESTAQUE.map((c) => (
                   <TouchableOpacity
                     key={c}
-                    style={[styles.corOpcao, { backgroundColor: c }, c === cor && styles.corOpcaoAtiva]}
+                    style={[
+                      styles.corOpcao,
+                      { backgroundColor: c },
+                      c === cor && styles.corOpcaoAtiva,
+                    ]}
                     onPress={() => escolherCor(c)}
                   >
-                    {c === cor && <Ionicons name="checkmark" size={18} color="#fff" />}
+                    {c === cor && (
+                      <Ionicons name="checkmark" size={18} color="#fff" />
+                    )}
                   </TouchableOpacity>
                 ))}
               </View>
@@ -441,7 +525,9 @@ export default function Perfil() {
                 <Text style={styles.cardTitulo}>Dados da conta</Text>
                 {!editando && (
                   <TouchableOpacity onPress={() => setEditando(true)}>
-                    <Text style={[styles.editarLink, { color: cor }]}>Editar</Text>
+                    <Text style={[styles.editarLink, { color: cor }]}>
+                      Editar
+                    </Text>
                   </TouchableOpacity>
                 )}
               </View>
@@ -488,20 +574,27 @@ export default function Perfil() {
                     maxLength={72}
                   />
 
-                  <TouchableOpacity style={styles.button} onPress={salvar} disabled={salvando}>
+                  <TouchableOpacity
+                    style={styles.button}
+                    onPress={salvar}
+                    disabled={salvando}
+                  >
                     <LinearGradient
-                      colors={['#ff7b39', '#ff4b4b']}
+                      colors={["#ff7b39", "#ff4b4b"]}
                       start={{ x: 0, y: 0 }}
                       end={{ x: 1, y: 0 }}
                       style={styles.gradientButton}
                     >
                       <Text style={styles.buttonText}>
-                        {salvando ? 'Salvando...' : 'Salvar alterações'}
+                        {salvando ? "Salvando..." : "Salvar alterações"}
                       </Text>
                     </LinearGradient>
                   </TouchableOpacity>
 
-                  <TouchableOpacity onPress={cancelarEdicao} disabled={salvando}>
+                  <TouchableOpacity
+                    onPress={cancelarEdicao}
+                    disabled={salvando}
+                  >
                     <Text style={styles.cancelar}>Cancelar</Text>
                   </TouchableOpacity>
                 </>
@@ -511,11 +604,15 @@ export default function Perfil() {
             <View style={styles.card}>
               <View style={styles.infoLinha}>
                 <Text style={styles.infoLabel}>Membro desde</Text>
-                <Text style={styles.infoValor}>{formatarData(perfil.created_at)}</Text>
+                <Text style={styles.infoValor}>
+                  {formatarData(perfil.created_at)}
+                </Text>
               </View>
               <View style={styles.infoLinha}>
                 <Text style={styles.infoLabel}>Último acesso</Text>
-                <Text style={styles.infoValor}>{formatarData(perfil.ultimo_acesso)}</Text>
+                <Text style={styles.infoValor}>
+                  {formatarData(perfil.ultimo_acesso)}
+                </Text>
               </View>
             </View>
 

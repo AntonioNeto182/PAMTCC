@@ -1,56 +1,58 @@
 <?php
 include('../config/cors.php');
 include('../config/database.php');
+include('../config/auth.php');
+include('../config/util.php');
 
-function responder(int $status, array $corpo): never
-{
-    http_response_code($status);
-    echo json_encode($corpo);
-    exit;
+exigirMetodo('POST');
+
+$eu         = exigirPermissao($conn, 'interacao.criar');
+$idDenuncia = inteiroPositivo(corpoJson()['id_denuncia'] ?? null) ?? falhar(400, 'Dados incompletos');
+
+$denuncia = consulta(
+    $conn,
+    'SELECT d.id_usuario, sd.nome AS status
+       FROM denuncias d
+       INNER JOIN status_denuncia sd ON sd.id_status = d.id_status
+      WHERE d.id_denuncia = ?',
+    [$idDenuncia]
+)[0] ?? falhar(404, 'Denúncia não encontrada');
+
+if ((int) $denuncia['id_usuario'] === $eu['id_usuario']) {
+    falhar(403, 'O autor não pode corroborar a própria denúncia');
 }
 
-$dados = json_decode(file_get_contents('php://input'), true);
-$dados = is_array($dados) ? $dados : [];
-
-$idDenuncia = filter_var($dados['id_denuncia'] ?? null, FILTER_VALIDATE_INT);
-$idUsuario  = filter_var($dados['id_usuario'] ?? null, FILTER_VALIDATE_INT);
-
-if (!$idDenuncia || !$idUsuario) {
-    responder(400, ['success' => false, 'message' => 'Dados incompletos']);
+if (in_array($denuncia['status'], ['resolvida', 'rejeitada'], true)) {
+    falhar(409, 'Esta denúncia está encerrada e não aceita novas corroborações.');
 }
 
-try {
-    // Alterna: se já votou, remove; senão, cria
-    $del = $conn->prepare('DELETE FROM denuncia_votos WHERE id_denuncia = ? AND id_usuario = ?');
-    $del->bind_param('ii', $idDenuncia, $idUsuario);
-    $del->execute();
+// "Up" = corroboração simples. O toggle só remove se não houver descrição nem imagem,
+// para nunca apagar uma evidência enviada pelo usuário.
+$removidas = executar(
+    $conn,
+    'DELETE FROM corroboracoes
+     WHERE id_denuncia = ? AND id_usuario = ? AND descricao IS NULL AND imagem IS NULL',
+    [$idDenuncia, $eu['id_usuario']]
+);
 
-    $votou = false;
+$votou = false;
 
-    if ($del->affected_rows === 0) {
-        try {
-            $ins = $conn->prepare('INSERT INTO denuncia_votos (id_denuncia, id_usuario) VALUES (?, ?)');
-            $ins->bind_param('ii', $idDenuncia, $idUsuario);
-            $ins->execute();
-            $votou = true;
-        } catch (mysqli_sql_exception $e) {
-            if ($e->getCode() === 1062) {        // toque duplo simultâneo: o voto já existe
-                $votou = true;
-            } elseif ($e->getCode() === 1452) {  // denúncia ou usuário inexistente
-                responder(404, ['success' => false, 'message' => 'Denúncia ou usuário não encontrado']);
-            } else {
-                throw $e;
-            }
+if ($removidas === 0) {
+    try {
+        executar($conn, 'INSERT INTO corroboracoes (id_denuncia, id_usuario) VALUES (?, ?)', [$idDenuncia, $eu['id_usuario']]);
+        $votou = true;
+    } catch (mysqli_sql_exception $e) {
+        if ($e->getCode() !== 1062) { // 1062: já existe (com descrição/imagem) — continua corroborando
+            throw $e;
         }
+        $votou = true;
     }
-
-    $cnt = $conn->prepare('SELECT COUNT(*) AS total FROM denuncia_votos WHERE id_denuncia = ?');
-    $cnt->bind_param('i', $idDenuncia);
-    $cnt->execute();
-    $votos = (int) $cnt->get_result()->fetch_assoc()['total'];
-} catch (mysqli_sql_exception $e) {
-    error_log($e->getMessage());
-    responder(500, ['success' => false, 'message' => 'Erro ao registrar voto']);
 }
+
+$votos = (int) consulta(
+    $conn,
+    'SELECT COUNT(*) AS total FROM corroboracoes WHERE id_denuncia = ? AND oculta = 0',
+    [$idDenuncia]
+)[0]['total'];
 
 echo json_encode(['success' => true, 'votos' => $votos, 'votou' => $votou]);

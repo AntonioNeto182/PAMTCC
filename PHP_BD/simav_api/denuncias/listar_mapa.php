@@ -1,8 +1,14 @@
 <?php
+// =====================================================================
+// ARQUIVO: C:\xampp\htdocs\simav_api\denuncias\listar_mapa.php
+// Lista todas as denúncias geolocalizadas para o mapa interativo.
+// Usado por Mapa.native.js e selecionar_local/index.js.
+// =====================================================================
 include('../config/cors.php');
 include('../config/database.php');
 
-$idUsuario = (int) filter_input(INPUT_GET, 'id_usuario', FILTER_VALIDATE_INT); // 0 = visitante
+// 0 = visitante. Não usamos exigirLogin() porque o mapa é público.
+$idUsuario = (int) filter_input(INPUT_GET, 'id_usuario', FILTER_VALIDATE_INT);
 
 $sql = "
 SELECT
@@ -17,26 +23,31 @@ SELECT
     t.nome              AS tipo,
     l.endereco,
     l.bairro,
-    ST_X(l.localizacao) AS latitude,
-    ST_Y(l.localizacao) AS longitude,
-    (SELECT COUNT(*) FROM denuncia_votos v WHERE v.id_denuncia = d.id_denuncia) AS votos,
-    EXISTS(SELECT 1 FROM denuncia_votos v
-            WHERE v.id_denuncia = d.id_denuncia AND v.id_usuario = $idUsuario) AS votou,
-    (SELECT COUNT(*) FROM denuncia_atualizacoes a WHERE a.id_denuncia = d.id_denuncia) AS atualizacoes,
+    ST_Y(l.localizacao) AS latitude,
+    ST_X(l.localizacao) AS longitude,
+    (SELECT COUNT(*) FROM corroboracoes c
+      WHERE c.id_denuncia = d.id_denuncia AND c.oculta = 0) AS votos,
+    EXISTS(SELECT 1 FROM corroboracoes c
+            WHERE c.id_denuncia = d.id_denuncia AND c.id_usuario = ?) AS votou,
+    (SELECT COUNT(*) FROM denuncia_atualizacoes a
+      WHERE a.id_denuncia = d.id_denuncia) AS atualizacoes,
     (SELECT caminho FROM imagens
       WHERE id_denuncia = d.id_denuncia
       ORDER BY ordem, id_imagem LIMIT 1) AS imagem
 FROM denuncias d
-INNER JOIN locais          l  ON d.id_local  = l.id_local
-INNER JOIN tipos_denuncia  t  ON d.id_tipo   = t.id_tipo
-INNER JOIN status_denuncia sd ON d.id_status = sd.id_status
+INNER JOIN locais          l  ON d.id_local   = l.id_local
+INNER JOIN tipos_denuncia  t  ON d.id_tipo    = t.id_tipo
+INNER JOIN status_denuncia sd ON d.id_status  = sd.id_status
 LEFT  JOIN usuarios        u  ON u.id_usuario = d.id_usuario
 ORDER BY d.id_denuncia DESC
 LIMIT 500
 ";
 
 try {
-    $dados = $conn->query($sql)->fetch_all(MYSQLI_ASSOC);
+    $stmt = $conn->prepare($sql);
+    $stmt->bind_param('i', $idUsuario);
+    $stmt->execute();
+    $dados = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 } catch (mysqli_sql_exception $e) {
     error_log($e->getMessage());
     http_response_code(500);

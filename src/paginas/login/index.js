@@ -1,7 +1,7 @@
 import "react-native-gesture-handler";
 import React, { useState } from "react";
 import api from "../../services/api";
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { salvarSessao } from "../../services/sessao";
 
 import {
   View,
@@ -20,7 +20,7 @@ import { LinearGradient } from "expo-linear-gradient";
 
 import { styles } from "./styles";
 
-import Logo from "../../../assets/icons/logo.png";
+import Logo from '../../components/Logo';
 
 export default function Login() {
   const navigation = useNavigation();
@@ -31,7 +31,6 @@ export default function Login() {
   async function entrar() {
     if (!email || !senha) {
       Alert.alert("Atenção", "Preencha e-mail e senha.");
-
       return;
     }
 
@@ -42,41 +41,51 @@ export default function Login() {
       });
 
       if (response.data.success) {
-        await AsyncStorage.setItem(
-          "usuario",
-          JSON.stringify(response.data.usuario),
-        );
+        await salvarSessao({
+          token: response.data.token,
+          usuario: response.data.usuario,
+          permissoes: response.data.permissoes,
+        });
 
         navigation.reset({
-          index: 0,                                             
+          index: 0,
           routes: [{ name: "Inicio" }],
         });
       } else {
         Alert.alert("Erro", response.data.message);
       }
     } catch (error) {
-      console.log("STATUS:", error.response?.status);
-      console.log("DATA:", JSON.stringify(error.response?.data));
-      console.log("RAW:", error.response?.data);
+      // ---- diagnóstico (remova quando estiver estável) ----
+      console.log("=== ERRO LOGIN ===");
+      console.log("message:", error?.message);
+      console.log("code:", error?.code);
+      console.log("name:", error?.name);
+      console.log("stack:", error?.stack);
+      console.log("tem request?", !!error?.request);
+      console.log("tem response?", !!error?.response);
+      console.log("tipo:", typeof error);
+      console.log("STATUS:", error?.response?.status);
+      console.log("DATA:", JSON.stringify(error?.response?.data));
+      // -----------------------------------------------------
 
-      if (error.response) {
+      if (error?.response) {
         Alert.alert(
           "Erro",
           typeof error.response.data === "string"
             ? error.response.data
-            : error.response.data?.message || "Erro ao fazer login.",
+            : error.response.data?.message || "Erro ao fazer login."
         );
-      } else if (error.request) {
+      } else if (error?.request) {
         Alert.alert("Erro", "Não foi possível conectar à API.");
       } else {
-        Alert.alert("Erro", "Erro inesperado.");
+        Alert.alert("Erro", `Erro inesperado: ${error?.message ?? "desconhecido"}`);
       }
     }
   }
 
   return (
     <View style={styles.container}>
-      <Image source={Logo} style={styles.logo} />
+      <Logo style={styles.logo} />
 
       <Text style={styles.title}>Bem-vindo ao</Text>
 

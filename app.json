@@ -15,7 +15,10 @@
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "O SIMAV usa sua localização para centralizar o mapa e ajudar a registrar denúncias com mais precisão."
+        "NSLocationWhenInUseUsageDescription": "O SIMAV usa sua localização para centralizar o mapa e ajudar a registrar denúncias com mais precisão.",
+        "NSCameraUsageDescription": "O SIMAV usa a câmera para você fotografar possíveis focos de arbovirose.",
+        "NSPhotoLibraryUsageDescription": "O SIMAV acessa suas fotos para anexar imagens às denúncias.",
+        "NSPhotoLibraryAddUsageDescription": "O SIMAV salva fotos de denúncias que você tirou pelo app."
       }
     },
     "android": {
@@ -26,7 +29,11 @@
       },
       "edgeToEdgeEnabled": true,
       "package": "com.anonymous.appPETIMAGEMPhp_Antonio",
-      "permissions": ["ACCESS_FINE_LOCATION", "ACCESS_COARSE_LOCATION"]
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "CAMERA"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -37,7 +44,15 @@
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermissionCode": "O SIMAV usa sua localização para centralizar o mapa."
+          "locationAlwaysAndWhenInUsePermission": "O SIMAV usa sua localização para centralizar o mapa."
+        }
+      ],
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Permita acesso às suas fotos para anexar às denúncias.",
+          "cameraPermission": "Permita acesso à câmera para você tirar fotos das denúncias."
         }
       ]
     ]

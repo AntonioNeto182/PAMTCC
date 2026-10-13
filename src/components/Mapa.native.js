@@ -1,37 +1,17 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { View, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 
 import api from '../services/api';
+import { mensagemDeErro, votar } from '../services/denuncias';
 import { PINS_CSS, PINS_JS } from './mapaPins';
 
 const CENTRO_REGISTRO = [-24.4979, -47.8447];
 const TEMPO_MAX_GPS_MS = 5000;
 const ATRASO_REVELAR_MS = 350;
-
-const CONFIG = {
-  apiUrl: api.defaults.baseURL,
-  // Raio geográfico (m) da zona. Fixo: não depende do zoom, então zonas não se fundem ao afastar.
-  raioZonaMetros: 150,
-  // Tamanho mínimo do círculo na tela (px), para continuar visível com zoom afastado.
-  raioMinimoPx: 8,
-  // Zoom aplicado ao focar uma denúncia vinda do perfil.
-  zoomFoco: 17,
-  // Status que não contam para as zonas (os pins continuam aparecendo).
-  statusIgnorados: ['resolvida', 'rejeitada'],
-  // Quantidade MÍNIMA de denúncias por nível, em ordem decrescente.
-  // O menor "min" também é o mínimo para a zona existir.
-  niveis: [
-    { min: 16, cor: '#8e24aa', rotulo: 'Área crítica' },
-    { min: 11, cor: '#f44336', rotulo: 'Concentração muito alta' },
-    { min: 7, cor: '#ff9800', rotulo: 'Alta concentração' },
-    { min: 4, cor: '#ffd54f', rotulo: 'Concentração moderada' },
-    { min: 2, cor: '#4caf50', rotulo: 'Baixa concentração' },
-  ],
-};
 
 const gerarHtml = (config) => `
 <!DOCTYPE html>
@@ -54,26 +34,51 @@ const gerarHtml = (config) => `
       box-shadow: 0 0 0 4px rgba(26,115,232,0.3);
     }
 
-    .legenda-zonas {
+    /* ---------- Legenda colapsável ---------- */
+    .legenda-wrap {
       position: absolute; bottom: 16px; left: 10px;
+      z-index: 1000; font-family: sans-serif;
+      display: none;
+    }
+    .legenda-painel {
       background: rgba(255,255,255,0.95);
       border-radius: 8px; padding: 8px 10px;
       box-shadow: 0 1px 4px rgba(0,0,0,0.3);
-      font-family: sans-serif; z-index: 1000; max-width: 170px;
-      display: none;
+      max-width: 170px;
+      margin-bottom: 6px;
     }
-    .legenda-zonas .titulo { font-size: 11px; font-weight: bold; margin-bottom: 5px; color: #222; }
-    .legenda-zonas .item { display: flex; align-items: center; margin-bottom: 3px; }
-    .legenda-zonas .swatch { width: 12px; height: 12px; border-radius: 50%; margin-right: 6px; flex-shrink: 0; }
-    .legenda-zonas .label { font-size: 10px; color: #333; }
-    .legenda-zonas .nota { font-size: 9px; color: #777; margin-top: 4px; }
+    .legenda-wrap.colapsada .legenda-painel { display: none; }
+    .legenda-painel .titulo { font-size: 11px; font-weight: bold; margin-bottom: 5px; color: #222; }
+    .legenda-painel .item { display: flex; align-items: center; margin-bottom: 3px; }
+    .legenda-painel .swatch { width: 12px; height: 12px; border-radius: 50%; margin-right: 6px; flex-shrink: 0; }
+    .legenda-painel .label { font-size: 10px; color: #333; }
+    .legenda-painel .nota { font-size: 9px; color: #777; margin-top: 4px; }
+
+    .legenda-toggle {
+      width: 38px; height: 38px;
+      border-radius: 19px;
+      background: #fff;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer;
+      font-size: 15px; font-weight: bold; color: #ff4b4b;
+      user-select: none;
+      transition: transform 0.15s;
+    }
+    .legenda-toggle:active { transform: scale(0.92); }
 
     ${PINS_CSS}
   </style>
 </head>
 <body>
   <div id="map"></div>
-  <div class="legenda-zonas" id="legenda"></div>
+
+  <div class="legenda-wrap colapsada" id="legenda-wrap">
+    <div class="legenda-painel" id="legenda"></div>
+    <div class="legenda-toggle" id="legenda-toggle">
+      <span id="legenda-icone">▲</span>
+    </div>
+  </div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
@@ -101,6 +106,10 @@ const gerarHtml = (config) => `
     let posicaoUsuario = null;
     let dadosCarregados = false;
     let focoPendente = null;
+    let denunciasCache = [];
+    let statusVisiveis = null;
+    // Texto de busca aplicado (já normalizado). Vazio = sem filtro textual.
+    let buscaTexto = '';
 
     const zonasLayer = L.layerGroup().addTo(map);
 
@@ -113,11 +122,62 @@ const gerarHtml = (config) => `
       });
     }
 
-    // ===================== PINS (AGRUPADOS POR LOCAL) =====================
+    // ===================== LEGENDA COLAPSÁVEL =====================
+
+    let legendaExpandida = false;
+
+    function alternarLegenda() {
+      legendaExpandida = !legendaExpandida;
+      const wrap = document.getElementById('legenda-wrap');
+      const icone = document.getElementById('legenda-icone');
+      if (legendaExpandida) {
+        wrap.classList.remove('colapsada');
+        icone.textContent = '▼';
+      } else {
+        wrap.classList.add('colapsada');
+        icone.textContent = '▲';
+      }
+    }
+
+    document.getElementById('legenda-toggle').addEventListener('click', alternarLegenda);
+
+    // ===================== PINS =====================
 
     function atualizarTamanhoDosMarcadores() {
       const tamanho = tamanhoPorZoom(map.getZoom());
       marcadores.forEach(function (m) { reiconarMarcador(m, tamanho); });
+    }
+
+    function atualizarVisibilidadePins() {
+      const mostrarPins = map.getZoom() >= CFG.zoomMinimoPins;
+
+      marcadores.forEach(function (m) {
+        const estaNoMapa = map.hasLayer(m);
+        if (mostrarPins && !estaNoMapa) m.addTo(map);
+        if (!mostrarPins && estaNoMapa) map.removeLayer(m);
+      });
+    }
+
+    function normalizar(t) {
+      return String(t == null ? '' : t)
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '');
+    }
+
+    function passaFiltro(d) {
+      if (statusVisiveis !== null && statusVisiveis.indexOf(d.status) === -1) return false;
+
+      if (buscaTexto.length > 0) {
+        const alvo = normalizar(
+          [d.endereco, d.bairro, d.cidade, d.autor, d.tipo]
+            .filter(Boolean)
+            .join(' ')
+        );
+        if (alvo.indexOf(buscaTexto) === -1) return false;
+      }
+
+      return true;
     }
 
     function limparMarcadores() {
@@ -129,14 +189,15 @@ const gerarHtml = (config) => `
       limparMarcadores();
       const tamanho = tamanhoPorZoom(map.getZoom());
 
-      agruparPorLocal(denuncias).forEach(function (grupo) {
-        marcadores.push(criarMarcadorGrupo(grupo, tamanho, null).addTo(map));
-      });
+      denuncias
+        .filter(passaFiltro)
+        .forEach(function (d) {
+          marcadores.push(criarMarcador(d, tamanho).addTo(map));
+        });
     }
 
-    // ===================== FOCO EM UMA DENÚNCIA =====================
+    // ===================== FOCO =====================
 
-    // Só aplica depois que os pins foram desenhados; antes disso fica pendente.
     function aplicarFoco() {
       if (!focoPendente || !dadosCarregados) return;
 
@@ -144,10 +205,12 @@ const gerarHtml = (config) => `
       focoPendente = null;
 
       const alvo = marcadores.find(function (m) {
-        return m.grupo.itens.some(function (i) { return i.id_denuncia === f.id; });
+        return m.denuncia && m.denuncia.id_denuncia === f.id;
       });
 
       map.setView([f.latitude, f.longitude], CFG.zoomFoco, { animate: false });
+      atualizarVisibilidadePins();
+
       if (alvo) alvo.openPopup();
     }
 
@@ -156,15 +219,22 @@ const gerarHtml = (config) => `
       aplicarFoco();
     }
 
-    // ===================== ZONAS (CÍRCULOS) =====================
+    // ===================== ZONAS =====================
 
     function nivelPara(qtd) {
       return CFG.niveis.find(function (n) { return qtd >= n.min; }) || null;
     }
 
-    // Agrupamento por distância em metros: o resultado não depende do zoom.
-    // Cada denúncia (inclusive corroborações) conta para a zona.
-    function agrupar(denuncias) {
+    function raioAgrupamentoAtual() {
+      const zoom = map.getZoom();
+      if (zoom >= 14) return CFG.raioZonaMetros;
+      if (zoom >= 12) return CFG.raioZonaMetros * 4;
+      if (zoom >= 10) return CFG.raioZonaMetros * 20;
+      if (zoom >= 8)  return CFG.raioZonaMetros * 80;
+      return CFG.raioZonaMetros * 300;
+    }
+
+    function agrupar(denuncias, raio) {
       const zonas = [];
 
       denuncias.forEach(function (d) {
@@ -174,7 +244,7 @@ const gerarHtml = (config) => `
 
         zonas.forEach(function (z) {
           const dist = map.distance(z.centro, ponto);
-          if (dist <= CFG.raioZonaMetros && dist < menor) { melhor = z; menor = dist; }
+          if (dist <= raio && dist < menor) { melhor = z; menor = dist; }
         });
 
         if (melhor) {
@@ -197,43 +267,48 @@ const gerarHtml = (config) => `
       circulos = [];
     }
 
-    function ajustarRaios() {
+    function ajustarRaios(raio) {
       const metrosPorPx = 156543.03392 * Math.cos(map.getCenter().lat * Math.PI / 180) / Math.pow(2, map.getZoom());
       const minimo = CFG.raioMinimoPx * metrosPorPx;
-      circulos.forEach(function (c) { c.setRadius(Math.max(CFG.raioZonaMetros, minimo)); });
+      circulos.forEach(function (c) { c.setRadius(Math.max(raio, minimo)); });
     }
 
     function desenharZonas(denuncias) {
       limparZonas();
 
       const ativas = denuncias.filter(function (d) {
-        return CFG.statusIgnorados.indexOf(d.status) === -1;
+        return CFG.statusIgnorados.indexOf(d.status) === -1 && passaFiltro(d);
       });
 
-      agrupar(ativas).forEach(function (zona) {
+      const raio = raioAgrupamentoAtual();
+      const mostrandoApenasZonas = map.getZoom() < CFG.zoomMinimoPins;
+
+      agrupar(ativas, raio).forEach(function (zona) {
         const nivel = nivelPara(zona.itens.length);
         if (!nivel) return;
 
         const circulo = L.circle(zona.centro, {
-          radius: CFG.raioZonaMetros,
+          radius: raio,
           color: nivel.cor,
           fillColor: nivel.cor,
           fillOpacity: 0.35,
           weight: 2,
         }).addTo(zonasLayer);
 
+        const rotuloQtd = mostrandoApenasZonas ? 'Denúncias na região' : 'Denúncias na área';
+
         const html =
           '<div class="popup-zona">' +
           '<p class="titulo">' + escapar(nivel.rotulo) + '</p>' +
-          '<p class="linha">Denúncias na área: ' + zona.itens.length + '</p>' +
-          '<p class="linha">Raio: ' + CFG.raioZonaMetros + ' m</p>' +
+          '<p class="linha">' + rotuloQtd + ': ' + zona.itens.length + '</p>' +
+          '<p class="linha">Raio: ' + Math.round(raio) + ' m</p>' +
           '</div>';
 
         circulo.bindPopup(html);
         circulos.push(circulo);
       });
 
-      ajustarRaios();
+      ajustarRaios(raio);
     }
 
     function montarLegenda() {
@@ -245,7 +320,7 @@ const gerarHtml = (config) => `
           '<div class="label">' + escapar(nivel.rotulo) + '</div></div>';
       });
 
-      html += '<div class="nota">Zona: ' + minimo + '+ denúncias em ' + CFG.raioZonaMetros + ' m</div>';
+      html += '<div class="nota">Zona: ' + minimo + '+ denúncias. Afaste o mapa para ver a concentração regional.</div>';
       document.getElementById('legenda').innerHTML = html;
     }
 
@@ -254,18 +329,51 @@ const gerarHtml = (config) => `
     // ===================== FUNÇÕES CHAMADAS PELO REACT NATIVE =====================
 
     function atualizarMarcadores(denuncias) {
+      denunciasCache = denuncias;
       desenharMarcadores(denuncias);
+      atualizarVisibilidadePins();
       desenharZonas(denuncias);
-      document.getElementById('legenda').style.display = 'block';
+      document.getElementById('legenda-wrap').style.display = 'block';
       dadosCarregados = true;
       aplicarFoco();
+
+      // Reaplica busca e status (o cache acabou de ser trocado)
+      const visiveis = denuncias.filter(passaFiltro).length;
+      avisar({ tipo: 'busca_resultado', total: visiveis });
     }
 
     function ocultarMarcadores() {
       dadosCarregados = false;
+      denunciasCache = [];
       limparMarcadores();
       limparZonas();
-      document.getElementById('legenda').style.display = 'none';
+      document.getElementById('legenda-wrap').style.display = 'none';
+    }
+
+    function definirStatusVisiveis(nomes) {
+      statusVisiveis = nomes;
+      if (!dadosCarregados || denunciasCache.length === 0) return;
+
+      desenharMarcadores(denunciasCache);
+      atualizarVisibilidadePins();
+      desenharZonas(denunciasCache);
+    }
+
+    function definirBusca(texto) {
+      buscaTexto = normalizar(texto).trim();
+
+      if (!dadosCarregados || denunciasCache.length === 0) {
+        avisar({ tipo: 'busca_resultado', total: 0 });
+        return;
+      }
+
+      desenharMarcadores(denunciasCache);
+      atualizarVisibilidadePins();
+      desenharZonas(denunciasCache);
+
+      // Reporta quantas denúncias sobraram (pins visíveis com filtro aplicado)
+      const visiveis = denunciasCache.filter(passaFiltro).length;
+      avisar({ tipo: 'busca_resultado', total: visiveis });
     }
 
     function definirLocalizacaoUsuario(lat, lng, centralizar) {
@@ -288,11 +396,13 @@ const gerarHtml = (config) => `
       map.flyTo(posicaoUsuario, 16, { duration: 1.2 });
     }
 
-    // ===================== EVENTOS DO MAPA =====================
-
     map.on('zoomend', function () {
       atualizarTamanhoDosMarcadores();
-      ajustarRaios();
+      atualizarVisibilidadePins();
+
+      if (denunciasCache.length > 0) {
+        desenharZonas(denunciasCache);
+      }
     });
   </script>
 </body>
@@ -302,21 +412,44 @@ const gerarHtml = (config) => `
 const comTimeout = (promessa, ms) =>
   Promise.race([promessa, new Promise((resolve) => setTimeout(() => resolve(null), ms))]);
 
-export default function Mapa({ mostrarDenuncias, focar = null }) {
+export default function Mapa({
+  mostrarDenuncias,
+  focar = null,
+  statusFiltro = null,
+  busca = '',
+  podeModerar = false,
+  onModerar = null,
+  onDetalhes = null,
+  onBuscaResultado = null,
+}) {
   const webviewRef = useRef(null);
   const carregadoRef = useRef(false);
   const posicaoRef = useRef(null);
   const focarRef = useRef(focar);
   focarRef.current = focar;
 
-  const html = useRef(gerarHtml(CONFIG)).current;
+  const html = useRef(gerarHtml({
+    apiUrl: api.defaults.baseURL,
+    podeModerar,
+    raioZonaMetros: 150,
+    zoomMinimoPins: 13,
+    raioMinimoPx: 8,
+    zoomFoco: 17,
+    statusIgnorados: ['resolvida', 'rejeitada'],
+    niveis: [
+      { min: 16, cor: '#8e24aa', rotulo: 'Área crítica' },
+      { min: 11, cor: '#f44336', rotulo: 'Concentração muito alta' },
+      { min: 7, cor: '#ff9800', rotulo: 'Alta concentração' },
+      { min: 4, cor: '#ffd54f', rotulo: 'Concentração moderada' },
+      { min: 2, cor: '#4caf50', rotulo: 'Baixa concentração' },
+    ],
+  })).current;
 
   const [webviewPronto, setWebviewPronto] = useState(false);
   const [gpsResolvido, setGpsResolvido] = useState(false);
   const [visivel, setVisivel] = useState(false);
   const [localizacaoPronta, setLocalizacaoPronta] = useState(false);
 
-  // GPS começa já na montagem, em paralelo ao carregamento do WebView
   useEffect(() => {
     let ativo = true;
 
@@ -348,14 +481,12 @@ export default function Mapa({ mostrarDenuncias, focar = null }) {
     };
   }, []);
 
-  // Só revela o mapa quando WebView e GPS estão prontos: sem "pulo" de posição
   useEffect(() => {
     if (!webviewPronto || !gpsResolvido) return;
 
     const coords = posicaoRef.current;
 
     if (coords) {
-      // Com foco definido, o GPS não pode recentralizar o mapa por cima dele
       const centralizar = !focarRef.current;
       webviewRef.current?.injectJavaScript(
         `definirLocalizacaoUsuario(${Number(coords.latitude)}, ${Number(coords.longitude)}, ${centralizar}); true;`
@@ -365,7 +496,6 @@ export default function Mapa({ mostrarDenuncias, focar = null }) {
 
     const t = setTimeout(() => setVisivel(true), ATRASO_REVELAR_MS);
 
-    // Refina a posição em segundo plano, sem mover a câmera
     Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced })
       .then(({ coords: precisa }) => {
         posicaoRef.current = precisa;
@@ -379,10 +509,20 @@ export default function Mapa({ mostrarDenuncias, focar = null }) {
     return () => clearTimeout(t);
   }, [webviewPronto, gpsResolvido]);
 
+  useEffect(() => {
+    if (!carregadoRef.current) return;
+    const json = statusFiltro === null ? 'null' : JSON.stringify(statusFiltro);
+    webviewRef.current?.injectJavaScript(`definirStatusVisiveis(${json}); true;`);
+  }, [statusFiltro]);
+
+  useEffect(() => {
+    if (!carregadoRef.current) return;
+    webviewRef.current?.injectJavaScript(`definirBusca(${JSON.stringify(busca)}); true;`);
+  }, [busca]);
+
   const buscarEExibirDenuncias = useCallback(async () => {
     try {
       const { data } = await api.get('/denuncias/listar_mapa.php');
-
       webviewRef.current?.injectJavaScript(`
         atualizarMarcadores(${JSON.stringify(data)});
         true;
@@ -413,6 +553,48 @@ export default function Mapa({ mostrarDenuncias, focar = null }) {
     webviewRef.current?.injectJavaScript('recentralizarNoUsuario(); true;');
   }
 
+  async function tratarVoto(id) {
+    try {
+      const resposta = await votar(id);
+      webviewRef.current?.injectJavaScript(
+        `atualizarDenuncia(${Number(id)}, ${JSON.stringify({
+          votos: resposta.votos,
+          votou: resposta.votou,
+        })}); true;`
+      );
+    } catch (erro) {
+      Alert.alert('Atenção', mensagemDeErro(erro, 'Não foi possível registrar o voto.'));
+      // Reabilita o botão Up (patch vazio = só reconstrói o popup)
+      webviewRef.current?.injectJavaScript(`atualizarDenuncia(${Number(id)}, {}); true;`);
+    }
+  }
+
+  function handleMessage(event) {
+    try {
+      const dados = JSON.parse(event.nativeEvent.data);
+
+      switch (dados.tipo) {
+        case 'moderar':
+          if (onModerar) onModerar(Number(dados.id_denuncia));
+          return;
+
+        case 'detalhes':
+          if (onDetalhes) onDetalhes(Number(dados.id_denuncia));
+          return;
+
+        case 'votar':
+          tratarVoto(Number(dados.id_denuncia));
+          return;
+
+        case 'busca_resultado':
+          if (onBuscaResultado) onBuscaResultado(Number(dados.total));
+          return;
+      }
+    } catch (erro) {
+      console.error('Erro ao processar mensagem do mapa:', erro);
+    }
+  }
+
   useEffect(() => {
     if (!carregadoRef.current) return;
 
@@ -436,6 +618,10 @@ export default function Mapa({ mostrarDenuncias, focar = null }) {
 
     if (mostrarDenuncias) buscarEExibirDenuncias();
     injetarFoco();
+
+    const json = statusFiltro === null ? 'null' : JSON.stringify(statusFiltro);
+    webviewRef.current?.injectJavaScript(`definirStatusVisiveis(${json}); true;`);
+    webviewRef.current?.injectJavaScript(`definirBusca(${JSON.stringify(busca)}); true;`);
   }
 
   return (
@@ -448,6 +634,7 @@ export default function Mapa({ mostrarDenuncias, focar = null }) {
         javaScriptEnabled
         domStorageEnabled
         onLoadEnd={handleLoadEnd}
+        onMessage={handleMessage}
       />
 
       {!visivel && (

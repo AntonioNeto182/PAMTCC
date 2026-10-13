@@ -17,7 +17,7 @@ import { useFotoPerfil } from '../../hooks/useFotoPerfil';
 import GraficoPizza from '../../components/GraficoPizza';
 import MenuLateral from '../../components/MenuLateral';
 import { styles } from './styles';
-import Logo from '../../../assets/icons/logo.png';
+import Logo from '../../components/Logo';
 
 const PERIODOS = [
   { chave: 'semana', rotulo: 'Última semana', comparacao: 'à semana anterior' },
@@ -110,7 +110,7 @@ export default function Estatisticas() {
         </TouchableOpacity>
 
         <View style={styles.headerLogo}>
-          <Image source={Logo} style={styles.headerLogoImage} />
+          <Logo style={styles.headerLogoImage} />
           <Text style={styles.headerLogoText}>SIMAV</Text>
         </View>
 

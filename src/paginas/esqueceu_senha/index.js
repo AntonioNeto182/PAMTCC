@@ -21,7 +21,7 @@ import { useNavigation } from '@react-navigation/native';
 
 import { styles } from './styles';
 
-import Logo from '../../../assets/icons/logo.png';
+import Logo from '../../components/Logo';
 
 export default function EsqueceuSenha() {
 

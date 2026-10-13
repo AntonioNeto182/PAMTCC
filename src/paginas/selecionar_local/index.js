@@ -310,6 +310,7 @@ export default function SelecionarLocal() {
         navigation.navigate('RegistrarDenuncia', {
           latitude: dados.lat,
           longitude: dados.lng,
+          origem: 'manual', // o usuário tocou no mapa
         });
       } else if (dados.tipo === 'corroborar') {
         corroborar(Number(dados.id_local));

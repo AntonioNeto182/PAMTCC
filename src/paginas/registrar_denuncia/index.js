@@ -12,14 +12,13 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import * as ImagePicker from 'expo-image-picker';
-import * as ImageManipulator from 'expo-image-manipulator';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import api from '../../services/api';
 import { buscarEndereco } from '../../services/geocodificacao';
+import { escolherDaGaleria, tirarFoto } from '../../services/imagens';
 import { styles } from './styles';
-import Logo from '../../../assets/icons/logo.png';
+import Logo from '../../components/Logo';
 import MenuLateral from '../../components/MenuLateral';
 
 export default function RegistrarDenuncia() {
@@ -29,6 +28,7 @@ export default function RegistrarDenuncia() {
   const {
     latitude,
     longitude,
+    origem,
     endereco: enderecoInicial,
     bairro: bairroInicial,
   } = route.params ?? {};
@@ -73,35 +73,26 @@ export default function RegistrarDenuncia() {
     };
   }, [latitude, longitude, enderecoInicial, bairroInicial]);
 
-  async function escolherImagem() {
-    const permissao = await ImagePicker.requestMediaLibraryPermissionsAsync();
+  async function abrirCamera() {
+    const nova = await tirarFoto();
+    if (nova) setImagem(nova);
+  }
 
-    if (!permissao.granted) {
-      Alert.alert('Permissão necessária', 'Autorize o acesso às fotos para anexar uma imagem.');
-      return;
-    }
+  async function abrirGaleria() {
+    const nova = await escolherDaGaleria();
+    if (nova) setImagem(nova);
+  }
 
-    const resultado = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      quality: 1,
-    });
-
-    if (resultado.canceled) return;
-
-    const original = resultado.assets[0];
-
-    try {
-      const acoes = original.width > 1280 ? [{ resize: { width: 1280 } }] : [];
-      const reduzida = await ImageManipulator.manipulateAsync(original.uri, acoes, {
-        compress: 0.7,
-        format: ImageManipulator.SaveFormat.JPEG,
-      });
-
-      setImagem({ uri: reduzida.uri, fileName: 'denuncia.jpg', mimeType: 'image/jpeg' });
-    } catch (erro) {
-      console.error('Erro ao reduzir imagem:', erro);
-      setImagem(original);
-    }
+  function escolherOrigem() {
+    Alert.alert(
+      'Adicionar imagem',
+      'De onde você quer pegar a foto?',
+      [
+        { text: 'Tirar foto', onPress: abrirCamera },
+        { text: 'Escolher da galeria', onPress: abrirGaleria },
+        { text: 'Cancelar', style: 'cancel' },
+      ]
+    );
   }
 
   async function enviarImagem(idDenuncia) {
@@ -148,6 +139,7 @@ export default function RegistrarDenuncia() {
         estado: 'SP',
         latitude,
         longitude,
+        origem_localizacao: origem ?? 'manual',
         id_tipo: idTipo,
         id_usuario: usuario?.id_usuario ?? null,
       });
@@ -189,7 +181,7 @@ export default function RegistrarDenuncia() {
         </TouchableOpacity>
 
         <View style={styles.headerLogo}>
-          <Image source={Logo} style={styles.headerLogoImage} />
+          <Logo style={styles.headerLogoImage} />
           <Text style={styles.headerLogoText}>SIMAV</Text>
         </View>
 
@@ -237,7 +229,7 @@ export default function RegistrarDenuncia() {
         />
 
         <Text style={styles.label}>Anexar fotos (opcional)</Text>
-        <TouchableOpacity style={styles.uploadButton} onPress={escolherImagem}>
+        <TouchableOpacity style={styles.uploadButton} onPress={escolherOrigem}>
           <Ionicons name="camera" size={20} color="#333" />
           <Text style={styles.uploadButtonText}>
             {imagem ? 'Trocar imagem' : 'Adicionar imagem'}

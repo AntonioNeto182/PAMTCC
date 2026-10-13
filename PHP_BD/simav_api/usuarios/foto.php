@@ -1,79 +1,47 @@
 <?php
+// =====================================================================
+// ARQUIVO: C:\xampp\htdocs\simav_api\usuarios\foto.php
+// =====================================================================
 include('../config/cors.php');
 include('../config/database.php');
+include('../config/auth.php');
+include('../config/util.php');
 
-function responder(int $status, array $corpo): never
-{
-    http_response_code($status);
-    echo json_encode($corpo);
-    exit;
+exigirMetodo('POST');
+
+$eu = exigirLogin($conn);
+
+$idUsuario = inteiroPositivo($_POST['id_usuario'] ?? null) ?? falhar(400, 'Usuário obrigatório');
+
+$souEu = $idUsuario === $eu['id_usuario'];
+if (!$souEu && !temPermissao($eu, 'usuario.editar')) {
+    falhar(403, 'Você não tem permissão para esta ação');
 }
 
-const TAMANHO_MAXIMO = 5 * 1024 * 1024;
-const EXTENSOES = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp'];
+$alvo = consulta(
+    $conn,
+    'SELECT foto_perfil FROM usuarios WHERE id_usuario = ? AND ativo = 1',
+    [$idUsuario]
+)[0] ?? falhar(404, 'Usuário não encontrado');
 
-$idUsuario = filter_input(INPUT_POST, 'id_usuario', FILTER_VALIDATE_INT);
-$arquivo   = $_FILES['foto'] ?? null;
+$novaFoto = salvarImagem($_FILES['foto'] ?? null, 'perfis');
 
-if (!$idUsuario || !$arquivo) {
-    responder(400, ['success' => false, 'message' => 'Dados incompletos']);
-}
-if ($arquivo['error'] !== UPLOAD_ERR_OK) {
-    responder(400, ['success' => false, 'message' => 'Falha no upload']);
-}
-if ($arquivo['size'] > TAMANHO_MAXIMO) {
-    responder(400, ['success' => false, 'message' => 'Arquivo muito grande']);
-}
-
-$mime = (new finfo(FILEINFO_MIME_TYPE))->file($arquivo['tmp_name']);
-
-if (!isset(EXTENSOES[$mime]) || getimagesize($arquivo['tmp_name']) === false) {
-    responder(400, ['success' => false, 'message' => 'Tipo de arquivo não permitido']);
-}
-
-$base      = __DIR__ . '/../uploads';
-$diretorio = "$base/perfis";
-
-if (!is_dir($diretorio) && !mkdir($diretorio, 0755, true)) {
-    responder(500, ['success' => false, 'message' => 'Falha ao preparar diretório']);
+if ($novaFoto === null) {
+    falhar(400, 'Nenhuma imagem enviada');
 }
 
 try {
-    $stmt = $conn->prepare('SELECT foto_perfil FROM usuarios WHERE id_usuario = ? AND ativo = 1');
-    $stmt->bind_param('i', $idUsuario);
-    $stmt->execute();
-    $linha = $stmt->get_result()->fetch_assoc();
-
-    if (!$linha) {
-        responder(404, ['success' => false, 'message' => 'Usuário não encontrado']);
-    }
-
-    $nome    = bin2hex(random_bytes(16)) . '.' . EXTENSOES[$mime];
-    $destino = "$diretorio/$nome";
-
-    if (!move_uploaded_file($arquivo['tmp_name'], $destino)) {
-        responder(500, ['success' => false, 'message' => 'Falha ao salvar arquivo']);
-    }
-
-    $relativo = "perfis/$nome";
-    $upd = $conn->prepare('UPDATE usuarios SET foto_perfil = ? WHERE id_usuario = ?');
-    $upd->bind_param('si', $relativo, $idUsuario);
-    $upd->execute();
-} catch (mysqli_sql_exception $e) {
-    if (isset($destino) && is_file($destino)) {
-        unlink($destino);
-    }
-    error_log($e->getMessage());
-    responder(500, ['success' => false, 'message' => 'Falha ao salvar foto']);
+    executar(
+        $conn,
+        'UPDATE usuarios SET foto_perfil = ? WHERE id_usuario = ?',
+        [$novaFoto, $idUsuario]
+    );
+} catch (Throwable $e) {
+    removerImagem($novaFoto); // não deixa arquivo órfão em uploads/perfis/
+    throw $e;
 }
 
-// Remove a foto anterior (apenas dentro de uploads/perfis)
-$antiga = (string) $linha['foto_perfil'];
-if (str_starts_with($antiga, 'perfis/')) {
-    $arquivoAntigo = "$diretorio/" . basename($antiga);
-    if (is_file($arquivoAntigo)) {
-        unlink($arquivoAntigo);
-    }
-}
+// Só agora remove a antiga — se algo falhou antes, ela ainda é a válida.
+removerImagem($alvo['foto_perfil']);
 
-echo json_encode(['success' => true, 'foto_perfil' => $relativo]);
+echo json_encode(['success' => true, 'foto_perfil' => $novaFoto]);

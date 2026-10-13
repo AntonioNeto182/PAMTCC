@@ -14,7 +14,7 @@ import MaskedView from '@react-native-masked-view/masked-view';
 import { LinearGradient } from 'expo-linear-gradient';
 
 import { styles } from './styles';
-import Logo from '../../../assets/icons/logo.png';
+import Logo from '../../components/Logo';
 import api from '../../services/api';
 
 export default function CriarConta() {
@@ -66,7 +66,7 @@ export default function CriarConta() {
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <Image source={Logo} style={styles.logo} />
+      <Logo style={styles.logo} />
 
       <MaskedView
         maskElement={<Text style={styles.titleGradient}>Criar Conta</Text>}
