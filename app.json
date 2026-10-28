@@ -28,6 +28,7 @@
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
+      "softwareKeyboardLayoutMode": "resize",
       "package": "com.anonymous.appPETIMAGEMPhp_Antonio",
       "permissions": [
         "ACCESS_FINE_LOCATION",

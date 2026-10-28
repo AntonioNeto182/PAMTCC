@@ -55,8 +55,28 @@ export async function tirarFoto() {
   return reduzir(original.uri, original.width);
 }
 
-/** Mantido por compatibilidade — quem chamava `escolherImagem` continua funcionando. */
-export const escolherImagem = escolherDaGaleria;
+/**
+ * Pergunta ao usuário se ele quer tirar foto ou escolher da galeria
+ * e devolve a imagem selecionada (ou null em qualquer cancelamento).
+ *
+ * Substitui o antigo alias `export const escolherImagem = escolherDaGaleria`.
+ * Toda tela que chamava `escolherImagem()` continua funcionando — agora com
+ * câmera disponível de graça.
+ */
+export async function escolherImagem() {
+  return new Promise((resolve) => {
+    Alert.alert(
+      'Adicionar imagem',
+      'De onde você quer pegar a foto?',
+      [
+        { text: 'Cancelar', style: 'cancel', onPress: () => resolve(null) },
+        { text: 'Tirar foto', onPress: async () => resolve(await tirarFoto()) },
+        { text: 'Escolher da galeria', onPress: async () => resolve(await escolherDaGaleria()) },
+      ],
+      { cancelable: true, onDismiss: () => resolve(null) }
+    );
+  });
+}
 
 /** Anexa a imagem a um FormData no formato que o React Native espera. */
 export function anexarImagem(form, campo, imagem, nome = 'imagem.jpg') {

@@ -4,15 +4,6 @@ export const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#faf6fb" },
 
   header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingTop: 10,
-    paddingBottom: 10,
-  },
-
-    header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -29,6 +20,11 @@ export const styles = StyleSheet.create({
     height: 40,
     resizeMode: 'contain',
     marginRight: 8,
+  },
+  headerLogoText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#ff4b4b',
   },
 
   profileButton: {
@@ -102,6 +98,83 @@ export const styles = StyleSheet.create({
 
   uploadButtonText: { fontSize: 14, fontWeight: "600", color: "#333" },
 
+  // ---------- preview da imagem escolhida ----------
+  previewArea: {
+    marginTop: 12,
+    position: 'relative',
+    borderRadius: 10,
+    overflow: 'hidden',
+  },
+  previewImage: {
+    width: '100%',
+    height: 200,
+    borderRadius: 10,
+    resizeMode: 'cover',
+  },
+  previewRemove: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    borderRadius: 15,
+    padding: 2,
+  },
+
+  // ---------- combobox de tipo ----------
+  comboBotao: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#e5e5e5',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  comboTexto: {
+    fontSize: 14,
+    color: '#333',
+  },
+  modalFundo: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  modalConteudo: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  modalHeader: {
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+    alignItems: 'center',
+  },
+  modalTitulo: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  modalOpcao: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f5f5f5',
+  },
+  modalOpcaoTexto: {
+    fontSize: 15,
+    color: '#444',
+  },
+  modalOpcaoTextoAtivo: {
+    color: '#ff7b39',
+    fontWeight: 'bold',
+  },
+
   button: { marginTop: 24, borderRadius: 20, overflow: "hidden" },
 
   gradientButton: {
@@ -111,4 +184,12 @@ export const styles = StyleSheet.create({
   },
 
   buttonText: { color: "#fff", fontSize: 15, fontWeight: "bold" },
+
+    labelComAjuda: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 16,
+    marginBottom: 6,
+    gap: 6,
+  },
 });

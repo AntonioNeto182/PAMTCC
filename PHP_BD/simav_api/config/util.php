@@ -1,7 +1,8 @@
 <?php
+// =====================================================================
+// ARQUIVO: C:\xampp\htdocs\simav_api\config\util.php
+// =====================================================================
 declare(strict_types=1);
-
-// Incluir DEPOIS de config/auth.php (usa responder(), consulta() e executar()).
 
 const IMAGEM_MAX_BYTES = 5 * 1024 * 1024;
 const IMAGEM_TIPOS     = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp'];
@@ -9,20 +10,21 @@ const PONTOS_POR_NIVEL = 50;
 
 final class ErroHttp extends RuntimeException
 {
-    public function __construct(public readonly int $status, string $mensagem)
+    public int $status;
+
+    public function __construct(int $status, string $mensagem)
     {
         parent::__construct($mensagem);
+        $this->status = $status;
     }
 }
 
-/** Qualquer ErroHttp vira resposta JSON; erros de banco ganham status coerentes sem vazar detalhes. */
 set_exception_handler(static function (Throwable $e): void {
     if ($e instanceof ErroHttp) {
         responder($e->status, ['success' => false, 'message' => $e->getMessage()]);
     }
 
     if ($e instanceof mysqli_sql_exception) {
-        // 45000 = regra de negócio levantada por trigger/procedure (mensagem escrita por nós)
         if ($e->getSqlState() === '45000') {
             responder(409, ['success' => false, 'message' => $e->getMessage()]);
         }
@@ -54,12 +56,8 @@ function inteiroPositivo(mixed $valor): ?int
 function textoOpcional(mixed $valor, int $max, string $campo = 'Texto'): ?string
 {
     $t = trim((string) ($valor ?? ''));
-    if ($t === '') {
-        return null;
-    }
-    if (mb_strlen($t) > $max) {
-        falhar(400, "$campo deve ter no máximo $max caracteres");
-    }
+    if ($t === '') return null;
+    if (mb_strlen($t) > $max) falhar(400, "$campo deve ter no máximo $max caracteres");
     return $t;
 }
 
@@ -68,7 +66,6 @@ function textoObrigatorio(mixed $valor, int $max, string $campo = 'Texto'): stri
     return textoOpcional($valor, $max, $campo) ?? falhar(400, "$campo é obrigatório");
 }
 
-/** Corpo da requisição: JSON ou formulário (multipart). */
 function entrada(): array
 {
     return $_POST ?: corpoJson();
@@ -81,7 +78,6 @@ function exigirMetodo(string ...$metodos): void
     }
 }
 
-/** @return array{0:int,1:int,2:int} [página, limite+1 (para detectar "tem mais"), deslocamento] */
 function paginacao(int $porPagina = 20): array
 {
     $pagina = max(1, (int) ($_GET['pagina'] ?? 1));
@@ -93,8 +89,6 @@ function cortarPagina(array $linhas, int $porPagina = 20): array
     return [array_slice($linhas, 0, $porPagina), count($linhas) > $porPagina];
 }
 
-// ---------- dados pessoais ----------
-
 function somenteDigitos(string $s): string
 {
     return preg_replace('/\D+/', '', $s) ?? '';
@@ -102,50 +96,35 @@ function somenteDigitos(string $s): string
 
 function cpfValido(string $cpf): bool
 {
-    if (!preg_match('/^\d{11}$/', $cpf) || preg_match('/^(\d)\1{10}$/', $cpf)) {
-        return false;
-    }
+    if (!preg_match('/^\d{11}$/', $cpf) || preg_match('/^(\d)\1{10}$/', $cpf)) return false;
     for ($t = 9; $t < 11; $t++) {
         $soma = 0;
-        for ($i = 0; $i < $t; $i++) {
-            $soma += (int) $cpf[$i] * ($t + 1 - $i);
-        }
-        if ((int) $cpf[$t] !== ((10 * $soma) % 11) % 10) {
-            return false;
-        }
+        for ($i = 0; $i < $t; $i++) $soma += (int) $cpf[$i] * ($t + 1 - $i);
+        if ((int) $cpf[$t] !== ((10 * $soma) % 11) % 10) return false;
     }
     return true;
 }
 
-/** CPF: aceita máscara; vazio = null; inválido = 400. */
 function normalizarCpf(mixed $valor): ?string
 {
     $d = somenteDigitos((string) ($valor ?? ''));
-    if ($d === '') {
-        return null;
-    }
+    if ($d === '') return null;
     return cpfValido($d) ? $d : falhar(400, 'CPF inválido');
 }
 
-/** Telefone com DDI opcional: 10 a 15 dígitos (mesma regra do CHECK do banco). */
 function normalizarTelefone(mixed $valor): ?string
 {
     $d = somenteDigitos((string) ($valor ?? ''));
-    if ($d === '') {
-        return null;
-    }
+    if ($d === '') return null;
     return preg_match('/^\d{10,15}$/', $d) ? $d : falhar(400, 'Telefone inválido (use DDD + número)');
 }
 
 function normalizarNascimento(mixed $valor): ?string
 {
     $v = trim((string) ($valor ?? ''));
-    if ($v === '') {
-        return null;
-    }
+    if ($v === '') return null;
     $d = DateTimeImmutable::createFromFormat('!Y-m-d', $v);
     $hoje = new DateTimeImmutable('today');
-
     if (!$d || $d->format('Y-m-d') !== $v || $d > $hoje || $d < $hoje->modify('-120 years')) {
         falhar(400, 'Data de nascimento inválida');
     }
@@ -157,23 +136,11 @@ function mascararCpf(?string $cpf): ?string
     return $cpf === null ? null : '•••.•••.•••-' . substr($cpf, -2);
 }
 
-// ---------- imagens ----------
-
-/**
- * Valida e grava a imagem enviada em uploads/<pasta>/. Retorna o caminho relativo.
- * Retorna null se nenhum arquivo foi enviado.
- */
 function salvarImagem(?array $arquivo, string $pasta): ?string
 {
-    if ($arquivo === null || ($arquivo['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
-        return null;
-    }
-    if ($arquivo['error'] !== UPLOAD_ERR_OK) {
-        falhar(400, 'Falha no upload da imagem');
-    }
-    if ($arquivo['size'] > IMAGEM_MAX_BYTES) {
-        falhar(400, 'Imagem muito grande (máximo 5 MB)');
-    }
+    if ($arquivo === null || ($arquivo['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) return null;
+    if ($arquivo['error'] !== UPLOAD_ERR_OK) falhar(400, 'Falha no upload da imagem');
+    if ($arquivo['size'] > IMAGEM_MAX_BYTES) falhar(400, 'Imagem muito grande (máximo 5 MB)');
 
     $mime = (new finfo(FILEINFO_MIME_TYPE))->file($arquivo['tmp_name']);
     if (!isset(IMAGEM_TIPOS[$mime]) || getimagesize($arquivo['tmp_name']) === false) {
@@ -194,18 +161,11 @@ function salvarImagem(?array $arquivo, string $pasta): ?string
 
 function removerImagem(?string $relativo): void
 {
-    if ($relativo === null || !preg_match('#^[a-z_]+/[a-f0-9]{32}\.(jpg|png|webp)$#', $relativo)) {
-        return;
-    }
+    if ($relativo === null || !preg_match('#^[a-z_]+/[a-f0-9]{32}\.(jpg|png|webp)$#', $relativo)) return;
     $caminho = __DIR__ . '/../uploads/' . $relativo;
-    if (is_file($caminho)) {
-        @unlink($caminho);
-    }
+    if (is_file($caminho)) @unlink($caminho);
 }
 
-// ---------- notificações ----------
-
-/** Insere uma notificação pelo nome do tipo (tabela tipos_notificacao). Ignora tipo inexistente. */
 function notificar(
     mysqli $conn,
     int $destino,
@@ -214,29 +174,22 @@ function notificar(
     string $mensagem,
     ?int $origem = null,
     ?int $idDenuncia = null,
-    ?int $idAmizade = null,
 ): void {
     executar(
         $conn,
         'INSERT INTO notificacoes
-            (id_usuario, id_tipo_notificacao, titulo, mensagem, id_usuario_origem, id_denuncia, id_amizade)
-         SELECT ?, t.id_tipo_notificacao, ?, ?, ?, ?, ?
+            (id_usuario, id_tipo_notificacao, titulo, mensagem, id_usuario_origem, id_denuncia)
+         SELECT ?, t.id_tipo_notificacao, ?, ?, ?, ?
          FROM tipos_notificacao t WHERE t.nome = ?',
-        [$destino, $titulo, $mensagem, $origem, $idDenuncia, $idAmizade, $tipo]
+        [$destino, $titulo, $mensagem, $origem, $idDenuncia, $tipo]
     );
 }
-
-// ---------- reputação ----------
 
 function nivelPorPontos(int $pontos): int
 {
     return min(255, intdiv(max(0, $pontos), PONTOS_POR_NIVEL) + 1);
 }
 
-/**
- * Registra um evento de reputação respeitando o limite diário do tipo.
- * O banco não tem trigger para isso: a API é a única responsável.
- */
 function registrarReputacao(
     mysqli $conn,
     int $idUsuario,
@@ -250,9 +203,7 @@ function registrarReputacao(
         [$tipo]
     )[0] ?? null;
 
-    if ($t === null) {
-        return false;
-    }
+    if ($t === null) return false;
 
     if ($t['limite_diario'] !== null) {
         $hoje = (int) consulta(
@@ -262,9 +213,7 @@ function registrarReputacao(
             [$idUsuario, (int) $t['id_tipo_reputacao']]
         )[0]['n'];
 
-        if ($hoje >= (int) $t['limite_diario']) {
-            return false;
-        }
+        if ($hoje >= (int) $t['limite_diario']) return false;
     }
 
     $pontos = (int) $t['pontos'];
@@ -277,10 +226,10 @@ function registrarReputacao(
     );
 
     $contadores = match ($tipo) {
-        'denuncia_confirmada'                       => ', denuncias_confirmadas = denuncias_confirmadas + 1',
-        'denuncia_rejeitada'                        => ', denuncias_rejeitadas = denuncias_rejeitadas + 1',
+        'denuncia_confirmada'                         => ', denuncias_confirmadas = denuncias_confirmadas + 1',
+        'denuncia_rejeitada'                          => ', denuncias_rejeitadas = denuncias_rejeitadas + 1',
         'corroboracao_validada', 'atualizacao_validada' => ', contribuicoes_validadas = contribuicoes_validadas + 1',
-        default                                     => '',
+        default                                       => '',
     };
 
     executar(
@@ -296,7 +245,6 @@ function registrarReputacao(
     return true;
 }
 
-/** Existência de um registro por chave (para devolver 404 limpo). */
 function existe(mysqli $conn, string $tabela, string $coluna, int $id): bool
 {
     static $permitidos = [

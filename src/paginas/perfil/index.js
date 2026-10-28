@@ -5,10 +5,10 @@ import {
   TextInput,
   TouchableOpacity,
   Image,
-  ScrollView,
   Alert,
   ActivityIndicator,
 } from "react-native";
+import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
@@ -375,8 +375,10 @@ export default function Perfil() {
         />
       ) : (
         perfil && (
-          <ScrollView
+          <KeyboardAwareScrollView
+            style={{ flex: 1 }}
             contentContainerStyle={styles.content}
+            bottomOffset={100}
             keyboardShouldPersistTaps="handled"
           >
             <View style={[styles.banner, { backgroundColor: cor }]} />
@@ -620,7 +622,7 @@ export default function Perfil() {
               <Ionicons name="log-out-outline" size={20} color="#ff4b4b" />
               <Text style={styles.sairTexto}>Sair da conta</Text>
             </TouchableOpacity>
-          </ScrollView>
+          </KeyboardAwareScrollView>
         )
       )}
     </SafeAreaView>

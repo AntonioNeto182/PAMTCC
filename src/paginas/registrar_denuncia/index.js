@@ -7,19 +7,37 @@ import {
   Image,
   ScrollView,
   Alert,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
+import { LinearGradient } from '../../components/SemGradiente';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 
 import api from '../../services/api';
 import { buscarEndereco } from '../../services/geocodificacao';
-import { escolherDaGaleria, tirarFoto } from '../../services/imagens';
+import { escolherImagem } from '../../services/imagens';
 import { styles } from './styles';
 import Logo from '../../components/Logo';
 import MenuLateral from '../../components/MenuLateral';
+
+// Mesma paleta e mesmo hash do mapaPins.js — garante que a cor
+// mostrada aqui é exatamente a que o pin terá no mapa.
+const PALETA_CORES = [
+  '#ff4b4b', '#ff9f1a', '#1a73e8', '#8e44ad',
+  '#16a085', '#e91e63', '#795548', '#607d8b',
+];
+
+function corPorTipo(tipo) {
+  if (!tipo) return PALETA_CORES[0];
+  let hash = 0;
+  for (let i = 0; i < tipo.length; i++) {
+    hash = tipo.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return PALETA_CORES[Math.abs(hash) % PALETA_CORES.length];
+}
 
 export default function RegistrarDenuncia() {
   const navigation = useNavigation();
@@ -38,6 +56,7 @@ export default function RegistrarDenuncia() {
   const [descricao, setDescricao] = useState('');
   const [tipos, setTipos] = useState([]);
   const [idTipo, setIdTipo] = useState(null);
+  const [mostrarTipos, setMostrarTipos] = useState(false);
   const [imagem, setImagem] = useState(null);
   const [enviando, setEnviando] = useState(false);
   const [menuAberto, setMenuAberto] = useState(false);
@@ -46,10 +65,20 @@ export default function RegistrarDenuncia() {
     async function carregarTipos() {
       try {
         const { data } = await api.get('/denuncias/listar_tipos.php');
-        setTipos(data);
-        if (data.length > 0) setIdTipo(data[0].id_tipo);
+        const lista = Array.isArray(data) ? data : (data?.itens ?? []);
+        setTipos(lista);
+        if (lista.length > 0) setIdTipo(lista[0].id_tipo);
+        console.log('[tipos] carregados:', lista.length);
       } catch (erro) {
-        console.error('Erro ao carregar tipos:', erro);
+        console.error(
+          '[tipos] erro:',
+          erro.response?.status,
+          erro.response?.data ?? erro.message
+        );
+        Alert.alert(
+          'Erro ao carregar tipos',
+          'Não foi possível buscar os tipos de problema. Verifique a conexão com a API.'
+        );
       }
     }
     carregarTipos();
@@ -73,26 +102,17 @@ export default function RegistrarDenuncia() {
     };
   }, [latitude, longitude, enderecoInicial, bairroInicial]);
 
-  async function abrirCamera() {
-    const nova = await tirarFoto();
-    if (nova) setImagem(nova);
-  }
-
-  async function abrirGaleria() {
-    const nova = await escolherDaGaleria();
-    if (nova) setImagem(nova);
-  }
-
-  function escolherOrigem() {
+  function mostrarAjudaTipo() {
     Alert.alert(
-      'Adicionar imagem',
-      'De onde você quer pegar a foto?',
-      [
-        { text: 'Tirar foto', onPress: abrirCamera },
-        { text: 'Escolher da galeria', onPress: abrirGaleria },
-        { text: 'Cancelar', style: 'cancel' },
-      ]
+      'O que é o Tipo de Problema?',
+      'O tipo de problema descreve a situação que você está denunciando (ex: Água parada, Lixo acumulado, etc.).\n\nA cor do pino ao lado do nome indica a cor exata com que esta denúncia aparecerá no mapa para todos os usuários.',
+      [{ text: 'Entendi' }]
     );
+  }
+
+  async function selecionarImagem() {
+    const nova = await escolherImagem();
+    if (nova) setImagem(nova);
   }
 
   async function enviarImagem(idDenuncia) {
@@ -173,6 +193,9 @@ export default function RegistrarDenuncia() {
     }
   }
 
+  const tipoSelecionadoNome =
+    tipos.find((t) => t.id_tipo === idTipo)?.nome || 'Selecione o tipo...';
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
@@ -190,7 +213,13 @@ export default function RegistrarDenuncia() {
         </TouchableOpacity>
       </View>
 
-      <ScrollView contentContainerStyle={styles.form}>
+      <KeyboardAwareScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={[styles.form, { flexGrow: 1, paddingBottom: 60 }]}
+        bottomOffset={100}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+      >
         <Text style={styles.title}>Registro de Denúncia</Text>
 
         <Text style={styles.label}>Endereço</Text>
@@ -199,23 +228,35 @@ export default function RegistrarDenuncia() {
         <Text style={styles.label}>Bairro</Text>
         <TextInput style={styles.input} value={bairro} onChangeText={setBairro} maxLength={100} />
 
-        <Text style={styles.label}>Tipo de Problema</Text>
-        <View style={styles.tiposArea}>
-          {tipos.map((tipo) => {
-            const ativo = idTipo === tipo.id_tipo;
-            return (
-              <TouchableOpacity
-                key={tipo.id_tipo}
-                style={[styles.tipoPill, ativo && styles.tipoPillAtivo]}
-                onPress={() => setIdTipo(tipo.id_tipo)}
-              >
-                <Text style={[styles.tipoTexto, ativo && styles.tipoTextoAtivo]}>
-                  {tipo.nome}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
+        {/* Label com o ícone de interrogação */}
+        <View style={styles.labelComAjuda}>
+          <Text style={[styles.label, { marginTop: 0, marginBottom: 0 }]}>Tipo de Problema</Text>
+          <TouchableOpacity onPress={mostrarAjudaTipo} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+            <Ionicons name="help-circle-outline" size={18} color="#888" />
+          </TouchableOpacity>
         </View>
+
+        {/* Botão do Combobox com o Pin em miniatura */}
+        <TouchableOpacity
+          style={styles.comboBotao}
+          onPress={() => setMostrarTipos(true)}
+          activeOpacity={0.8}
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+            {idTipo && tipoSelecionadoNome !== 'Selecione o tipo...' && (
+              <Ionicons
+                name="location"
+                size={20}
+                color={corPorTipo(tipoSelecionadoNome)}
+                style={{ marginRight: 8 }}
+              />
+            )}
+            <Text style={styles.comboTexto}>
+              {tipoSelecionadoNome}
+            </Text>
+          </View>
+          <Ionicons name="chevron-down" size={20} color="#666" />
+        </TouchableOpacity>
 
         <Text style={styles.label}>Descrição do problema (opcional)</Text>
         <TextInput
@@ -229,7 +270,7 @@ export default function RegistrarDenuncia() {
         />
 
         <Text style={styles.label}>Anexar fotos (opcional)</Text>
-        <TouchableOpacity style={styles.uploadButton} onPress={escolherOrigem}>
+        <TouchableOpacity style={styles.uploadButton} onPress={selecionarImagem}>
           <Ionicons name="camera" size={20} color="#333" />
           <Text style={styles.uploadButtonText}>
             {imagem ? 'Trocar imagem' : 'Adicionar imagem'}
@@ -257,7 +298,62 @@ export default function RegistrarDenuncia() {
             </Text>
           </LinearGradient>
         </TouchableOpacity>
-      </ScrollView>
+      </KeyboardAwareScrollView>
+
+      {/* Modal do Combobox */}
+      <Modal visible={mostrarTipos} transparent animationType="fade">
+        <TouchableOpacity
+          style={styles.modalFundo}
+          activeOpacity={1}
+          onPress={() => setMostrarTipos(false)}
+        >
+          <View style={styles.modalConteudo}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitulo}>Selecione o Tipo</Text>
+            </View>
+            <ScrollView style={{ maxHeight: 300 }}>
+              {tipos.length === 0 && (
+                <Text style={{ padding: 20, textAlign: 'center', color: '#999' }}>
+                  Nenhum tipo disponível.
+                </Text>
+              )}
+              {tipos.map((tipo) => {
+                const cor = corPorTipo(tipo.nome);
+                return (
+                  <TouchableOpacity
+                    key={tipo.id_tipo}
+                    style={styles.modalOpcao}
+                    onPress={() => {
+                      setIdTipo(tipo.id_tipo);
+                      setMostrarTipos(false);
+                    }}
+                  >
+                    <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                      {/* Pin colorido na lista de opções */}
+                      <Ionicons
+                        name="location"
+                        size={20}
+                        color={cor}
+                        style={{ marginRight: 8 }}
+                      />
+                      <Text style={[
+                        styles.modalOpcaoTexto,
+                        idTipo === tipo.id_tipo && styles.modalOpcaoTextoAtivo,
+                      ]}>
+                        {tipo.nome}
+                      </Text>
+                    </View>
+
+                    {idTipo === tipo.id_tipo && (
+                      <Ionicons name="checkmark-circle" size={22} color="#ff7b39" />
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        </TouchableOpacity>
+      </Modal>
 
       <MenuLateral
         visible={menuAberto}

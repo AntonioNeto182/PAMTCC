@@ -1,21 +1,27 @@
 import React, { useState } from 'react';
 import {
-  View,
+  Alert,
+  StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  Image,
-  KeyboardAvoidingView,
-  Platform,
-  Alert,
+  View,
 } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useNavigation } from '@react-navigation/native';
 import MaskedView from '@react-native-masked-view/masked-view';
-import { LinearGradient } from 'expo-linear-gradient';
+import { LinearGradient } from '../../components/SemGradiente';
 
 import { styles } from './styles';
 import Logo from '../../components/Logo';
 import api from '../../services/api';
+
+const KEYBOARD_OFFSET = 120;
+
+const local = StyleSheet.create({
+  scroll: { flex: 1, backgroundColor: '#efedf0' },
+  content: { flex: 0, flexGrow: 1, paddingBottom: 40 },
+});
 
 export default function CriarConta() {
   const navigation = useNavigation();
@@ -62,9 +68,12 @@ export default function CriarConta() {
   }
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    <KeyboardAwareScrollView
+      style={local.scroll}
+      contentContainerStyle={[styles.container, local.content]}
+      bottomOffset={KEYBOARD_OFFSET}
+      keyboardShouldPersistTaps="handled"
+      showsVerticalScrollIndicator={false}
     >
       <Logo style={styles.logo} />
 
@@ -128,6 +137,6 @@ export default function CriarConta() {
           <Text style={styles.register}>Já tenho uma conta</Text>
         </TouchableOpacity>
       </View>
-    </KeyboardAvoidingView>
+    </KeyboardAwareScrollView>
   );
 }

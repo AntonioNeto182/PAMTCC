@@ -13,7 +13,7 @@ import {
 
 import MaskedView from '@react-native-masked-view/masked-view';
 
-import { LinearGradient } from 'expo-linear-gradient';
+import { LinearGradient } from '../../components/SemGradiente';
 
 import { Ionicons } from '@expo/vector-icons';
 

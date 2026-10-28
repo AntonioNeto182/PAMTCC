@@ -1,8 +1,5 @@
-import { StyleSheet } from 'react-native';
-
-export const styles = StyleSheet.create({
+export const styles = {
     container: {
-        flex: 1,
         backgroundColor: '#efedf0',
         alignItems: 'center',
         paddingTop: 80,
@@ -43,16 +40,13 @@ export const styles = StyleSheet.create({
         backgroundColor: '#e9e6ea',
         borderRadius: 12,
         paddingHorizontal: 15,
-
         shadowColor: '#000',
         shadowOffset: {
             width: 0,
             height: 2,
         },
-
         shadowOpacity: 0.2,
         shadowRadius: 3,
-
         elevation: 3,
     },
 
@@ -86,4 +80,4 @@ export const styles = StyleSheet.create({
         fontWeight: 'bold',
         fontSize: 13,
     },
-});
+};
